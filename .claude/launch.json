@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["run.py"],
       "port": 8000
+    },
+    {
+      "name": "ahhouch-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["preview_server.py"],
+      "port": 8030
     }
   ]
 }

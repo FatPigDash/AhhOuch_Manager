@@ -19,6 +19,20 @@ async function request(method, url, body) {
   return res.json()
 }
 
+// 檔案上傳（multipart）。不設 Content-Type，讓瀏覽器自帶 boundary。
+async function uploadForm(url, formData) {
+  const res = await fetch(url, { method: 'POST', body: formData })
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`
+    try {
+      const data = await res.json()
+      if (data.detail) detail = data.detail
+    } catch (_) { /* 忽略 */ }
+    throw new Error(detail)
+  }
+  return res.json()
+}
+
 export const api = {
   meta: () => request('GET', '/api/meta'),
 
@@ -42,4 +56,78 @@ export const api = {
   deleteCard: (id) => request('DELETE', `/api/customer/cards/${id}`),
   // 拖曳移動 (C9)：position 為在目標看板的插入索引
   moveCard: (id, data) => request('POST', `/api/customer/cards/${id}/move`, data),
+
+  // 卡片詳情（簡介 + 心得，C12–C22）
+  getCard: (id) => request('GET', `/api/customer/cards/${id}`),
+
+  // 圖片 (C13)
+  uploadImage: (cardId, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return uploadForm(`/api/customer/cards/${cardId}/images`, fd)
+  },
+  pasteImage: (cardId, dataUrl) =>
+    request('POST', `/api/customer/cards/${cardId}/images/paste`, { data_url: dataUrl }),
+  setCover: (imageId) => request('POST', `/api/customer/images/${imageId}/cover`),
+  deleteImage: (imageId) => request('DELETE', `/api/customer/images/${imageId}`),
+
+  // 評分模板 (C17/C18/C20)
+  listTemplates: () => request('GET', '/api/customer/templates'),
+  createTemplate: (name) => request('POST', '/api/customer/templates', { name }),
+  renameTemplate: (id, name) => request('PATCH', `/api/customer/templates/${id}`, { name }),
+  deleteTemplate: (id) => request('DELETE', `/api/customer/templates/${id}`),
+  addTemplateItem: (templateId, name) =>
+    request('POST', `/api/customer/templates/${templateId}/items`, { name }),
+  renameTemplateItem: (itemId, name) =>
+    request('PATCH', `/api/customer/template-items/${itemId}`, { name }),
+  deleteTemplateItem: (itemId) =>
+    request('DELETE', `/api/customer/template-items/${itemId}`),
+
+  // 心得 (C16/C19/C21/C22)
+  createReview: (cardId, data = {}) =>
+    request('POST', `/api/customer/cards/${cardId}/reviews`, data),
+  updateReview: (id, data) => request('PATCH', `/api/customer/reviews/${id}`, data),
+  applyReviewTemplate: (reviewId, templateId) =>
+    request('POST', `/api/customer/reviews/${reviewId}/template`, { template_id: templateId }),
+  deleteReview: (id) => request('DELETE', `/api/customer/reviews/${id}`),
+  updateScore: (id, data) => request('PATCH', `/api/customer/scores/${id}`, data),
+
+  // ===== 店家：美容師資訊卡片 (S2–S5) =====
+  listStoreCards: () => request('GET', '/api/store/cards'),
+  createStoreCard: (name) => request('POST', '/api/store/cards', { name }),
+  getStoreCard: (id) => request('GET', `/api/store/cards/${id}`),
+  updateStoreCard: (id, data) => request('PATCH', `/api/store/cards/${id}`, data),
+  deleteStoreCard: (id) => request('DELETE', `/api/store/cards/${id}`),
+  uploadStoreImage: (cardId, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return uploadForm(`/api/store/cards/${cardId}/images`, fd)
+  },
+  pasteStoreImage: (cardId, dataUrl) =>
+    request('POST', `/api/store/cards/${cardId}/images/paste`, { data_url: dataUrl }),
+  setStoreCover: (imageId) => request('POST', `/api/store/images/${imageId}/cover`),
+  deleteStoreImage: (imageId) => request('DELETE', `/api/store/images/${imageId}`),
+  publishText: (cardId, variant) =>
+    request('GET', `/api/store/cards/${cardId}/publish-text?variant=${variant}`),
+
+  // ===== 店家：班表 (S6–S12) =====
+  listSchedules: () => request('GET', '/api/store/schedules'),
+  createSchedule: (title = '') => request('POST', '/api/store/schedules', { title }),
+  getSchedule: (id) => request('GET', `/api/store/schedules/${id}`),
+  updateSchedule: (id, data) => request('PATCH', `/api/store/schedules/${id}`, data),
+  deleteSchedule: (id) => request('DELETE', `/api/store/schedules/${id}`),
+  addEntry: (scheduleId, storeCardId) =>
+    request('POST', `/api/store/schedules/${scheduleId}/entries`, { store_card_id: storeCardId }),
+  updateEntry: (entryId, data) => request('PATCH', `/api/store/entries/${entryId}`, data),
+  deleteEntry: (entryId) => request('DELETE', `/api/store/entries/${entryId}`),
+  shiftSlots: (start) => request('GET', `/api/store/shift-slots?start=${encodeURIComponent(start)}`),
+  schedulePublishText: (id) => request('GET', `/api/store/schedules/${id}/publish-text`),
+
+  // ===== 社群發布 (P1) =====
+  publishPlatforms: () => request('GET', '/api/publish/platforms'),
+  listTargets: () => request('GET', '/api/publish/targets'),
+  createTarget: (data) => request('POST', '/api/publish/targets', data),
+  updateTarget: (id, data) => request('PATCH', `/api/publish/targets/${id}`, data),
+  deleteTarget: (id) => request('DELETE', `/api/publish/targets/${id}`),
+  sendPublish: (targetId, text) => request('POST', '/api/publish/send', { target_id: targetId, text }),
 }

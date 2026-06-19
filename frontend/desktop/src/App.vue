@@ -1,8 +1,11 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { api } from './api'
 
 const title = ref('AhhOuch')
+const route = useRoute()
+const isStore = computed(() => route.path.startsWith('/store'))
 
 onMounted(async () => {
   try {
@@ -16,7 +19,10 @@ onMounted(async () => {
 <template>
   <header class="app-header">
     <router-link to="/" class="brand">{{ title }}</router-link>
-    <span class="role">客人</span>
+    <nav class="roles">
+      <router-link to="/" class="role" :class="{ active: !isStore }">客人</router-link>
+      <router-link to="/store" class="role" :class="{ active: isStore }">店家</router-link>
+    </nav>
   </header>
   <main class="app-main">
     <router-view />
@@ -38,12 +44,16 @@ onMounted(async () => {
   color: #fff;
   text-decoration: none;
 }
+.roles { display: flex; gap: 6px; }
 .role {
   font-size: 0.85rem;
+  color: #bcccdc;
   background: #334e68;
-  padding: 2px 10px;
+  padding: 3px 14px;
   border-radius: 999px;
+  text-decoration: none;
 }
+.role.active { background: #2680c2; color: #fff; font-weight: 600; }
 .app-main {
   padding: 24px;
 }

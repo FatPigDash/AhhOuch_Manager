@@ -5,6 +5,26 @@
 """
 from .board import Board
 from .card import CustomerCard
+from .image import CardImage
+from .publish import PublishTarget
+from .review import CardReview, ReviewScore
+from .schedule import Schedule, ScheduleEntry
 from .spa import Spa
+from .store import StoreCard, StoreCardImage
+from .template import RatingTemplate, RatingTemplateItem
 
-__all__ = ["Spa", "Board", "CustomerCard"]
+__all__ = [
+    "Spa",
+    "Board",
+    "CustomerCard",
+    "CardImage",
+    "CardReview",
+    "ReviewScore",
+    "RatingTemplate",
+    "RatingTemplateItem",
+    "StoreCard",
+    "StoreCardImage",
+    "Schedule",
+    "ScheduleEntry",
+    "PublishTarget",
+]

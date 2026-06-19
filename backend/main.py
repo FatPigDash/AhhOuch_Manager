@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config, version
 from .database import init_db
-from .routers import customer, store
+from .routers import customer, publish, store
 
 
 @asynccontextmanager
@@ -28,6 +28,7 @@ app = FastAPI(title=version.app_name(), version=version.version(), lifespan=life
 
 app.include_router(customer.router)
 app.include_router(store.router)
+app.include_router(publish.router)
 
 
 @app.get("/api/meta")
@@ -38,6 +39,14 @@ def meta() -> dict:
         "version": version.version(),
         "title": version.full_title(),
     }
+
+
+def _mount_images() -> None:
+    """將 DATA/images 掛載於 /images，供前端顯示上傳/貼上的圖片 (C13)。"""
+    config.ensure_data_dirs()
+    app.mount(
+        "/images", StaticFiles(directory=str(config.IMAGES_DIR)), name="images"
+    )
 
 
 def _mount_frontend() -> None:
@@ -61,5 +70,6 @@ def _mount_frontend() -> None:
 </body></html>"""
 
 
-# 路由掛載必須在所有 API 路由之後（StaticFiles 掛在 "/" 會吃掉其餘路徑）。
+# 掛載順序：/images 與 API 路由都必須在 "/" 之前（StaticFiles 掛在 "/" 會吃掉其餘路徑）。
+_mount_images()
 _mount_frontend()

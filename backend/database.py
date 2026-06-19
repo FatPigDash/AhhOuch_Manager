@@ -1,12 +1,12 @@
 """SQLite 連線與初始化。
 
-M0 階段僅建立引擎與資料表建立流程；各模組的資料模型（spa/board/card/
-review/template/schedule…）將於後續 Phase 加入 models/ 後自動被建立。
-預設資料（如五個預設看板、預設評分模板）也於對應 Phase 補上。
+init_db()：建立資料夾與資料表、對既有 DB 補欄位（輕量遷移）、植入預設資料
+（五個預設看板於建立養身館時產生；預設評分模板於此植入）。
 """
 from __future__ import annotations
 
-from sqlmodel import SQLModel, Session, create_engine
+from sqlalchemy import text
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from . import config
 
@@ -17,14 +17,57 @@ engine = create_engine(
     connect_args={"check_same_thread": False},
 )
 
+# 既有 DB 補欄位用：{資料表: {欄位: "型別 預設值"}}
+_COLUMN_MIGRATIONS: dict[str, dict[str, str]] = {
+    "customercard": {
+        "nationality": "TEXT DEFAULT ''",
+        "intro_text": "TEXT DEFAULT ''",
+        "intro_collapsed": "INTEGER DEFAULT 0",
+    },
+}
+
+
+def _migrate() -> None:
+    """為既有資料表補上模型新增的欄位（SQLite 不支援 create_all 自動 ALTER）。"""
+    with engine.connect() as conn:
+        for table, columns in _COLUMN_MIGRATIONS.items():
+            existing = {
+                row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))
+            }
+            if not existing:
+                continue  # 資料表不存在（全新 DB 由 create_all 直接建好正確結構）
+            for col, ddl in columns.items():
+                if col not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+        conn.commit()
+
+
+def _seed_defaults() -> None:
+    """植入預設評分模板（若尚無任何模板）(C18)。"""
+    from .models import RatingTemplate, RatingTemplateItem
+
+    with Session(engine) as session:
+        if session.exec(select(RatingTemplate)).first() is not None:
+            return
+        template = RatingTemplate(name="預設", position=0)
+        session.add(template)
+        session.commit()
+        session.refresh(template)
+        for i, name in enumerate(config.DEFAULT_RATING_ITEMS):
+            session.add(
+                RatingTemplateItem(template_id=template.id, name=name, position=i)
+            )
+        session.commit()
+
 
 def init_db() -> None:
-    """建立資料夾與所有資料表。匯入 models 以註冊 SQLModel 表格。"""
+    """建立資料夾與所有資料表、補欄位、植入預設資料。"""
     config.ensure_data_dirs()
-    # 匯入後 SQLModel.metadata 才會包含各表（後續 Phase 會填充 models/）。
-    from . import models  # noqa: F401
+    from . import models  # noqa: F401  匯入以註冊 SQLModel 表格
 
     SQLModel.metadata.create_all(engine)
+    _migrate()
+    _seed_defaults()
 
 
 def get_session() -> Session:

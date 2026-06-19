@@ -1,9 +1,436 @@
 """店家 API（美容師資訊卡片 / 班表 / 草稿）。
 
-對應需求 S1–S12。M0 階段為空殼，端點將於 M4 起逐步加入。
+對應需求 S1–S12。
+M4 範圍：資訊卡片 CRUD (S2/S4)、圖片(上傳/貼上/封面，S3)、發布純文字 (S5)。
+發布的「排版圖片」由前端以 html2canvas 產生（PoC 6.2 選定方案 A）。
+班表與草稿 (S6–S12) 於 M5 加入。
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+import json
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
+from sqlmodel import Session, select
+
+from ..database import get_session
+from ..models import Schedule, ScheduleEntry, StoreCard, StoreCardImage
+from ..services import image_service, shift_calculator
+from ..services.time_utils import normalize_time
 
 router = APIRouter(prefix="/api/store", tags=["store"])
+
+
+# --------------------------------------------------------------------------
+# 輸入結構
+# --------------------------------------------------------------------------
+class StoreCardCreate(BaseModel):
+    name: str
+
+
+class StoreCardUpdate(BaseModel):
+    name: str | None = None
+    full_intro: str | None = None
+    short_intro: str | None = None
+
+
+class PasteImage(BaseModel):
+    data_url: str
+
+
+class ScheduleCreate(BaseModel):
+    title: str = ""
+
+
+class ScheduleUpdate(BaseModel):
+    title: str | None = None
+
+
+class EntryCreate(BaseModel):
+    store_card_id: int
+
+
+class EntryUpdate(BaseModel):
+    time_mode: str | None = None  # "manual" | "auto"
+    auto_start: str | None = None
+    slots: list[str] | None = None  # 顯示用時段清單（會正規化）
+
+
+# --------------------------------------------------------------------------
+# 共用工具
+# --------------------------------------------------------------------------
+def _get_or_404(session: Session, model, obj_id: int, label: str):
+    obj = session.get(model, obj_id)
+    if obj is None:
+        raise HTTPException(status_code=404, detail=f"找不到{label} (id={obj_id})")
+    return obj
+
+
+def _next_position(session: Session, model, **filters) -> int:
+    stmt = select(model)
+    for key, value in filters.items():
+        stmt = stmt.where(getattr(model, key) == value)
+    items = session.exec(stmt).all()
+    return (max((i.position for i in items), default=-1)) + 1
+
+
+def _images(session: Session, card_id: int) -> list[StoreCardImage]:
+    return session.exec(
+        select(StoreCardImage)
+        .where(StoreCardImage.store_card_id == card_id)
+        .order_by(StoreCardImage.position)
+    ).all()
+
+
+def _cover_url(session: Session, card_id: int) -> str | None:
+    imgs = _images(session, card_id)
+    if not imgs:
+        return None
+    cover = next((im for im in imgs if im.is_cover), imgs[0])
+    return image_service.image_url(cover.filename)
+
+
+def _serialize_card(session: Session, card: StoreCard) -> dict:
+    images = [
+        {**im.model_dump(), "url": image_service.image_url(im.filename)}
+        for im in _images(session, card.id)
+    ]
+    return {
+        **card.model_dump(),
+        "cover_image": _cover_url(session, card.id),
+        "images": images,
+    }
+
+
+# --------------------------------------------------------------------------
+# 資訊卡片 CRUD (S2/S4)
+# --------------------------------------------------------------------------
+@router.get("/cards")
+def list_cards(session: Session = Depends(get_session)) -> list[dict]:
+    cards = session.exec(select(StoreCard).order_by(StoreCard.position)).all()
+    return [_serialize_card(session, c) for c in cards]
+
+
+@router.post("/cards", status_code=201)
+def create_card(
+    data: StoreCardCreate, session: Session = Depends(get_session)
+) -> dict:
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="名字不可空白")
+    card = StoreCard(name=name, position=_next_position(session, StoreCard))
+    session.add(card)
+    session.commit()
+    session.refresh(card)
+    return _serialize_card(session, card)
+
+
+@router.get("/cards/{card_id}")
+def get_card(card_id: int, session: Session = Depends(get_session)) -> dict:
+    card = _get_or_404(session, StoreCard, card_id, "資訊卡片")
+    return _serialize_card(session, card)
+
+
+@router.patch("/cards/{card_id}")
+def update_card(
+    card_id: int, data: StoreCardUpdate, session: Session = Depends(get_session)
+) -> dict:
+    card = _get_or_404(session, StoreCard, card_id, "資訊卡片")
+    if data.name is not None:
+        name = data.name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="名字不可空白")
+        card.name = name
+    if data.full_intro is not None:
+        card.full_intro = data.full_intro
+    if data.short_intro is not None:
+        card.short_intro = data.short_intro
+    session.add(card)
+    session.commit()
+    session.refresh(card)
+    return _serialize_card(session, card)
+
+
+@router.delete("/cards/{card_id}", status_code=204)
+def delete_card(card_id: int, session: Session = Depends(get_session)) -> None:
+    card = _get_or_404(session, StoreCard, card_id, "資訊卡片")
+    for im in _images(session, card_id):
+        image_service.delete_image_file(im.filename)
+        session.delete(im)
+    session.delete(card)
+    session.commit()
+
+
+# --------------------------------------------------------------------------
+# 圖片（上傳 / 貼上 / 封面 / 刪除，S3）
+# --------------------------------------------------------------------------
+def _add_image(session: Session, card_id: int, filename: str) -> dict:
+    existing = _images(session, card_id)
+    image = StoreCardImage(
+        store_card_id=card_id,
+        filename=filename,
+        is_cover=(len(existing) == 0),
+        position=_next_position(session, StoreCardImage, store_card_id=card_id),
+    )
+    session.add(image)
+    session.commit()
+    session.refresh(image)
+    return {**image.model_dump(), "url": image_service.image_url(image.filename)}
+
+
+@router.post("/cards/{card_id}/images", status_code=201)
+async def upload_image(
+    card_id: int,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+) -> dict:
+    _get_or_404(session, StoreCard, card_id, "資訊卡片")
+    data = await file.read()
+    try:
+        filename = image_service.save_image_bytes(data)
+    except Exception:
+        raise HTTPException(status_code=422, detail="檔案不是有效的圖片")
+    return _add_image(session, card_id, filename)
+
+
+@router.post("/cards/{card_id}/images/paste", status_code=201)
+def paste_image(
+    card_id: int, data: PasteImage, session: Session = Depends(get_session)
+) -> dict:
+    _get_or_404(session, StoreCard, card_id, "資訊卡片")
+    try:
+        filename = image_service.save_data_url(data.data_url)
+    except Exception:
+        raise HTTPException(status_code=422, detail="貼上的內容不是有效的圖片")
+    return _add_image(session, card_id, filename)
+
+
+@router.post("/images/{image_id}/cover")
+def set_cover(image_id: int, session: Session = Depends(get_session)) -> dict:
+    image = _get_or_404(session, StoreCardImage, image_id, "圖片")
+    for other in _images(session, image.store_card_id):
+        other.is_cover = other.id == image_id
+        session.add(other)
+    session.commit()
+    return {"ok": True}
+
+
+@router.delete("/images/{image_id}", status_code=204)
+def delete_image(image_id: int, session: Session = Depends(get_session)) -> None:
+    image = _get_or_404(session, StoreCardImage, image_id, "圖片")
+    card_id, was_cover = image.store_card_id, image.is_cover
+    image_service.delete_image_file(image.filename)
+    session.delete(image)
+    session.commit()
+    if was_cover:
+        remaining = session.exec(
+            select(StoreCardImage)
+            .where(StoreCardImage.store_card_id == card_id)
+            .order_by(StoreCardImage.position)
+        ).first()
+        if remaining:
+            remaining.is_cover = True
+            session.add(remaining)
+            session.commit()
+
+
+# --------------------------------------------------------------------------
+# 發布純文字 (S5)；排版圖片由前端 html2canvas 產生
+# --------------------------------------------------------------------------
+@router.get("/cards/{card_id}/publish-text")
+def publish_text(
+    card_id: int, variant: str = "full", session: Session = Depends(get_session)
+) -> dict:
+    """產生可貼到群組的純文字。variant: full=完整介紹、short=簡短介紹 (S5)。"""
+    card = _get_or_404(session, StoreCard, card_id, "資訊卡片")
+    if variant not in ("full", "short"):
+        raise HTTPException(status_code=422, detail="variant 須為 full 或 short")
+    intro = card.full_intro if variant == "full" else card.short_intro
+    lines = [card.name]
+    if intro.strip():
+        lines.append(intro.strip())
+    return {"variant": variant, "text": "\n".join(lines)}
+
+
+# ==========================================================================
+# 班表 (S6–S12)
+# ==========================================================================
+def _entry_slots(entry: ScheduleEntry) -> list[str]:
+    try:
+        return json.loads(entry.slots_json)
+    except (ValueError, TypeError):
+        return []
+
+
+def _serialize_entry(session: Session, entry: ScheduleEntry) -> dict:
+    card = session.get(StoreCard, entry.store_card_id)
+    return {
+        **entry.model_dump(),
+        "slots": _entry_slots(entry),
+        "name": card.name if card else "(已刪除卡片)",
+        "short_intro": card.short_intro if card else "",
+        "cover_image": _cover_url(session, card.id) if card else None,
+    }
+
+
+def _serialize_schedule(session: Session, schedule: Schedule) -> dict:
+    entries = session.exec(
+        select(ScheduleEntry)
+        .where(ScheduleEntry.schedule_id == schedule.id)
+        .order_by(ScheduleEntry.position)
+    ).all()
+    return {
+        **schedule.model_dump(),
+        "entries": [_serialize_entry(session, e) for e in entries],
+    }
+
+
+@router.get("/schedules")
+def list_schedules(session: Session = Depends(get_session)) -> list[dict]:
+    schedules = session.exec(
+        select(Schedule).order_by(Schedule.updated_at.desc())
+    ).all()
+    # 列表僅需基本資訊與人數
+    out = []
+    for s in schedules:
+        count = len(
+            session.exec(
+                select(ScheduleEntry).where(ScheduleEntry.schedule_id == s.id)
+            ).all()
+        )
+        out.append({**s.model_dump(), "entry_count": count})
+    return out
+
+
+@router.post("/schedules", status_code=201)
+def create_schedule(
+    data: ScheduleCreate, session: Session = Depends(get_session)
+) -> dict:
+    schedule = Schedule(title=data.title)
+    session.add(schedule)
+    session.commit()
+    session.refresh(schedule)
+    return _serialize_schedule(session, schedule)
+
+
+@router.get("/schedules/{schedule_id}")
+def get_schedule(
+    schedule_id: int, session: Session = Depends(get_session)
+) -> dict:
+    schedule = _get_or_404(session, Schedule, schedule_id, "班表")
+    return _serialize_schedule(session, schedule)
+
+
+@router.patch("/schedules/{schedule_id}")
+def update_schedule(
+    schedule_id: int, data: ScheduleUpdate, session: Session = Depends(get_session)
+) -> dict:
+    schedule = _get_or_404(session, Schedule, schedule_id, "班表")
+    if data.title is not None:
+        schedule.title = data.title
+    schedule.updated_at = datetime.now()
+    session.add(schedule)
+    session.commit()
+    session.refresh(schedule)
+    return _serialize_schedule(session, schedule)
+
+
+@router.delete("/schedules/{schedule_id}", status_code=204)
+def delete_schedule(
+    schedule_id: int, session: Session = Depends(get_session)
+) -> None:
+    schedule = _get_or_404(session, Schedule, schedule_id, "班表")
+    for e in session.exec(
+        select(ScheduleEntry).where(ScheduleEntry.schedule_id == schedule_id)
+    ).all():
+        session.delete(e)
+    session.delete(schedule)
+    session.commit()
+
+
+@router.post("/schedules/{schedule_id}/entries", status_code=201)
+def add_entry(
+    schedule_id: int, data: EntryCreate, session: Session = Depends(get_session)
+) -> dict:
+    """把一張資訊卡片加入出勤名單 (S7/S8)。同一人不重複加入。"""
+    _get_or_404(session, Schedule, schedule_id, "班表")
+    _get_or_404(session, StoreCard, data.store_card_id, "資訊卡片")
+    existing = session.exec(
+        select(ScheduleEntry)
+        .where(ScheduleEntry.schedule_id == schedule_id)
+        .where(ScheduleEntry.store_card_id == data.store_card_id)
+    ).first()
+    if existing:
+        return _serialize_entry(session, existing)
+    entry = ScheduleEntry(
+        schedule_id=schedule_id,
+        store_card_id=data.store_card_id,
+        position=_next_position(session, ScheduleEntry, schedule_id=schedule_id),
+    )
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return _serialize_entry(session, entry)
+
+
+@router.patch("/entries/{entry_id}")
+def update_entry(
+    entry_id: int, data: EntryUpdate, session: Session = Depends(get_session)
+) -> dict:
+    entry = _get_or_404(session, ScheduleEntry, entry_id, "出勤人員")
+    if data.time_mode is not None:
+        if data.time_mode not in ("manual", "auto"):
+            raise HTTPException(status_code=422, detail="time_mode 須為 manual 或 auto")
+        entry.time_mode = data.time_mode
+    if data.auto_start is not None:
+        entry.auto_start = data.auto_start
+    if data.slots is not None:
+        # 正規化每個時段（保留無法解析的原字串，避免使用者輸入意外被丟棄）
+        cleaned = [normalize_time(s) or s.strip() for s in data.slots if s.strip()]
+        entry.slots_json = json.dumps(cleaned, ensure_ascii=False)
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return _serialize_entry(session, entry)
+
+
+@router.delete("/entries/{entry_id}", status_code=204)
+def delete_entry(entry_id: int, session: Session = Depends(get_session)) -> None:
+    entry = _get_or_404(session, ScheduleEntry, entry_id, "出勤人員")
+    session.delete(entry)
+    session.commit()
+
+
+@router.get("/shift-slots")
+def shift_slots(start: str) -> dict:
+    """自動換算班次清單 (S10)：每班 1.5h、含端點共 9 班。"""
+    return {"start": normalize_time(start), "slots": shift_calculator.shift_slots(start)}
+
+
+@router.get("/schedules/{schedule_id}/publish-text")
+def schedule_publish_text(
+    schedule_id: int, session: Session = Depends(get_session)
+) -> dict:
+    """產生班表發布純文字 (S11)：標題列 + 各人員（編號、簡短介紹、時段）。"""
+    schedule = _get_or_404(session, Schedule, schedule_id, "班表")
+    entries = session.exec(
+        select(ScheduleEntry)
+        .where(ScheduleEntry.schedule_id == schedule_id)
+        .order_by(ScheduleEntry.position)
+    ).all()
+    blocks: list[str] = []
+    if schedule.title.strip():
+        blocks.append(schedule.title.strip())
+    for entry in entries:
+        card = session.get(StoreCard, entry.store_card_id)
+        if card is None:
+            continue
+        lines = [card.name]
+        if card.short_intro.strip():
+            lines.append(card.short_intro.strip())
+        slots = _entry_slots(entry)
+        if slots:
+            lines.append("、".join(slots))
+        blocks.append("\n".join(lines))
+    return {"text": "\n\n".join(blocks)}

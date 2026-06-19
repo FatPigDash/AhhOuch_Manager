@@ -17,8 +17,6 @@ const newBoardName = ref('')
 const newCardTitle = ref({})
 const editingBoardId = ref(null)
 const editingBoardName = ref('')
-const editingCardId = ref(null)
-const editingCardTitle = ref('')
 
 async function load() {
   destroySortables()
@@ -172,18 +170,8 @@ async function addCard(board) {
   } catch (e) { error.value = e.message }
 }
 
-function startCardEdit(card) {
-  editingCardId.value = card.id
-  editingCardTitle.value = card.title
-}
-async function saveCardTitle(card) {
-  const title = editingCardTitle.value.trim()
-  if (!title) return
-  try {
-    await api.updateCard(card.id, { title })
-    editingCardId.value = null
-    await load()
-  } catch (e) { error.value = e.message }
+function openCard(card) {
+  router.push({ name: 'card-detail', params: { id: card.id } })
 }
 async function removeCard(card) {
   if (!confirm(`刪除卡片「${card.title}」？`)) return
@@ -254,24 +242,20 @@ onBeforeUnmount(() => {
         </div>
 
         <ul class="card-list" :data-board-id="board.id" :data-sort-mode="board.sort_mode">
-          <li v-for="card in board.cards" :key="card.id" class="card" :data-card-id="card.id">
+          <li
+            v-for="card in board.cards"
+            :key="card.id"
+            class="card"
+            :data-card-id="card.id"
+            @click="openCard(card)"
+          >
             <div class="cover" :class="{ placeholder: !card.cover_image }">
               <img v-if="card.cover_image" :src="card.cover_image" alt="" />
               <span v-else>無封面</span>
             </div>
             <div class="card-body">
-              <template v-if="editingCardId === card.id">
-                <input
-                  v-model="editingCardTitle"
-                  @keyup.enter="saveCardTitle(card)"
-                  @blur="saveCardTitle(card)"
-                  autofocus
-                />
-              </template>
-              <template v-else>
-                <span class="card-title" @click="startCardEdit(card)">{{ card.title }}</span>
-                <button class="card-del" @click="removeCard(card)" title="刪除卡片">✕</button>
-              </template>
+              <span class="card-title">{{ card.title }}</span>
+              <button class="card-del" @click.stop="removeCard(card)" title="刪除卡片">✕</button>
             </div>
           </li>
         </ul>

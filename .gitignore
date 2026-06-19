@@ -20,6 +20,10 @@ frontend/*/dist/
 # 軟體輸出資料 (X6)
 DATA/
 
+# 臨時預覽伺服器（開發驗證用）
+preview_server.py
+.preview_data/
+
 # 編輯器
 .vscode/
 .idea/

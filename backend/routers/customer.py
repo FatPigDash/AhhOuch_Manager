@@ -6,12 +6,22 @@ M1 範圍：養身館 CRUD (C1/C2/C3)、看板增減/改名 (C4/C5/C6)、卡片�
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlmodel import Session, select
 
 from .. import config
 from ..database import get_session
-from ..models import Board, CustomerCard, Spa
+from ..models import (
+    Board,
+    CardImage,
+    CardReview,
+    CustomerCard,
+    RatingTemplate,
+    RatingTemplateItem,
+    ReviewScore,
+    Spa,
+)
+from ..services import image_service
 
 router = APIRouter(prefix="/api/customer", tags=["customer"])
 
@@ -54,11 +64,52 @@ class CardCreate(BaseModel):
 
 class CardUpdate(BaseModel):
     title: str | None = None
+    nationality: str | None = None
+    intro_text: str | None = None
+    intro_collapsed: bool | None = None
 
 
 class CardMove(BaseModel):
     board_id: int  # 目標看板（可為原看板）
     position: int  # 在目標看板中的插入位置（0 起算）
+
+
+class PasteImage(BaseModel):
+    data_url: str  # data:image/...;base64,xxx 或純 base64
+
+
+class TemplateCreate(BaseModel):
+    name: str
+
+
+class TemplateUpdate(BaseModel):
+    name: str
+
+
+class ItemCreate(BaseModel):
+    name: str
+
+
+class ItemUpdate(BaseModel):
+    name: str
+
+
+class ReviewCreate(BaseModel):
+    template_id: int | None = None  # 指定模板；省略則沿用前一則或預設第一組 (C20/C22)
+
+
+class ReviewUpdate(BaseModel):
+    date: str | None = None
+    text: str | None = None
+
+
+class ScoreUpdate(BaseModel):
+    score: int | None = None
+    note: str | None = None
+
+
+class ReviewApplyTemplate(BaseModel):
+    template_id: int  # 切換套用的模板，重新快照項目
 
 
 # --------------------------------------------------------------------------
@@ -69,6 +120,19 @@ def _get_or_404(session: Session, model, obj_id: int, label: str):
     if obj is None:
         raise HTTPException(status_code=404, detail=f"找不到{label} (id={obj_id})")
     return obj
+
+
+def _cover_url(session: Session, card_id: int) -> str | None:
+    """卡片封面 URL：取 is_cover 者，否則第一張圖，皆無則 None (C8)。"""
+    images = session.exec(
+        select(CardImage)
+        .where(CardImage.card_id == card_id)
+        .order_by(CardImage.position)
+    ).all()
+    if not images:
+        return None
+    cover = next((im for im in images if im.is_cover), images[0])
+    return image_service.image_url(cover.filename)
 
 
 def _next_position(session: Session, model, **filters) -> int:
@@ -124,7 +188,10 @@ def get_spa(spa_id: int, session: Session = Depends(get_session)) -> dict:
         # 預設模式依標題標準 Unicode 排序（Python str 比較即為碼點順序）(C10)
         if board.sort_mode == "unicode":
             cards = sorted(cards, key=lambda c: c.title)
-        board_list.append({**board.model_dump(), "cards": cards})
+        card_dicts = [
+            {**c.model_dump(), "cover_image": _cover_url(session, c.id)} for c in cards
+        ]
+        board_list.append({**board.model_dump(), "cards": card_dicts})
 
     return {**spa.model_dump(), "boards": board_list}
 
@@ -159,7 +226,7 @@ def delete_spa(spa_id: int, session: Session = Depends(get_session)) -> None:
             select(CustomerCard).where(CustomerCard.board_id == board.id)
         ).all()
         for card in cards:
-            session.delete(card)
+            _delete_card_cascade(session, card)
         session.delete(board)
     session.delete(spa)
     session.commit()
@@ -241,7 +308,7 @@ def delete_board(board_id: int, session: Session = Depends(get_session)) -> None
         select(CustomerCard).where(CustomerCard.board_id == board_id)
     ).all()
     for card in cards:
-        session.delete(card)
+        _delete_card_cascade(session, card)
     session.delete(board)
     session.commit()
 
@@ -278,17 +345,433 @@ def update_card(
         if not new_title:
             raise HTTPException(status_code=422, detail="卡片標題不可空白")
         card.title = new_title
+    if data.nationality is not None:
+        card.nationality = data.nationality
+    if data.intro_text is not None:
+        card.intro_text = data.intro_text
+    if data.intro_collapsed is not None:
+        card.intro_collapsed = data.intro_collapsed
     session.add(card)
     session.commit()
     session.refresh(card)
     return card
 
 
+def _delete_card_cascade(session: Session, card: CustomerCard) -> None:
+    """刪除卡片及其圖片（含檔案）、心得與評分。"""
+    for img in session.exec(
+        select(CardImage).where(CardImage.card_id == card.id)
+    ).all():
+        image_service.delete_image_file(img.filename)
+        session.delete(img)
+    reviews = session.exec(
+        select(CardReview).where(CardReview.card_id == card.id)
+    ).all()
+    for review in reviews:
+        for score in session.exec(
+            select(ReviewScore).where(ReviewScore.review_id == review.id)
+        ).all():
+            session.delete(score)
+        session.delete(review)
+    session.delete(card)
+
+
 @router.delete("/cards/{card_id}", status_code=204)
 def delete_card(card_id: int, session: Session = Depends(get_session)) -> None:
     card = _get_or_404(session, CustomerCard, card_id, "卡片")
-    session.delete(card)
+    _delete_card_cascade(session, card)
     session.commit()
+
+
+# --------------------------------------------------------------------------
+# 卡片詳情（簡介 + 心得，C12–C22）
+# --------------------------------------------------------------------------
+def _serialize_review(session: Session, review: CardReview) -> dict:
+    scores = session.exec(
+        select(ReviewScore)
+        .where(ReviewScore.review_id == review.id)
+        .order_by(ReviewScore.position)
+    ).all()
+    return {**review.model_dump(), "scores": [s.model_dump() for s in scores]}
+
+
+@router.get("/cards/{card_id}")
+def get_card(card_id: int, session: Session = Depends(get_session)) -> dict:
+    """卡片完整內容：基本欄位 + 圖片 + 多組心得（含評分）。"""
+    card = _get_or_404(session, CustomerCard, card_id, "卡片")
+    images = session.exec(
+        select(CardImage)
+        .where(CardImage.card_id == card_id)
+        .order_by(CardImage.position)
+    ).all()
+    image_list = [
+        {**im.model_dump(), "url": image_service.image_url(im.filename)}
+        for im in images
+    ]
+    reviews = session.exec(
+        select(CardReview)
+        .where(CardReview.card_id == card_id)
+        .order_by(CardReview.position)
+    ).all()
+    review_list = [_serialize_review(session, r) for r in reviews]
+    board = session.get(Board, card.board_id)
+    return {
+        **card.model_dump(),
+        "spa_id": board.spa_id if board else None,  # 供前端返回養身館頁
+        "cover_image": _cover_url(session, card_id),
+        "images": image_list,
+        "reviews": review_list,
+    }
+
+
+# --------------------------------------------------------------------------
+# 簡介圖片（上傳 / 貼上 / 封面 / 刪除，C13）
+# --------------------------------------------------------------------------
+def _add_image(session: Session, card_id: int, filename: str) -> CardImage:
+    existing = session.exec(
+        select(CardImage).where(CardImage.card_id == card_id)
+    ).all()
+    image = CardImage(
+        card_id=card_id,
+        filename=filename,
+        is_cover=(len(existing) == 0),  # 第一張自動設為封面
+        position=_next_position(session, CardImage, card_id=card_id),
+    )
+    session.add(image)
+    session.commit()
+    session.refresh(image)
+    return {**image.model_dump(), "url": image_service.image_url(image.filename)}
+
+
+@router.post("/cards/{card_id}/images", status_code=201)
+async def upload_image(
+    card_id: int,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+) -> dict:
+    _get_or_404(session, CustomerCard, card_id, "卡片")
+    data = await file.read()
+    try:
+        filename = image_service.save_image_bytes(data)
+    except Exception:
+        raise HTTPException(status_code=422, detail="檔案不是有效的圖片")
+    return _add_image(session, card_id, filename)
+
+
+@router.post("/cards/{card_id}/images/paste", status_code=201)
+def paste_image(
+    card_id: int, data: PasteImage, session: Session = Depends(get_session)
+) -> dict:
+    _get_or_404(session, CustomerCard, card_id, "卡片")
+    try:
+        filename = image_service.save_data_url(data.data_url)
+    except Exception:
+        raise HTTPException(status_code=422, detail="貼上的內容不是有效的圖片")
+    return _add_image(session, card_id, filename)
+
+
+@router.post("/images/{image_id}/cover")
+def set_cover(image_id: int, session: Session = Depends(get_session)) -> dict:
+    image = _get_or_404(session, CardImage, image_id, "圖片")
+    for other in session.exec(
+        select(CardImage).where(CardImage.card_id == image.card_id)
+    ).all():
+        other.is_cover = other.id == image_id
+        session.add(other)
+    session.commit()
+    return {"ok": True}
+
+
+@router.delete("/images/{image_id}", status_code=204)
+def delete_image(image_id: int, session: Session = Depends(get_session)) -> None:
+    image = _get_or_404(session, CardImage, image_id, "圖片")
+    card_id, was_cover = image.card_id, image.is_cover
+    image_service.delete_image_file(image.filename)
+    session.delete(image)
+    session.commit()
+    # 若刪掉的是封面，將剩餘第一張設為封面
+    if was_cover:
+        remaining = session.exec(
+            select(CardImage)
+            .where(CardImage.card_id == card_id)
+            .order_by(CardImage.position)
+        ).first()
+        if remaining:
+            remaining.is_cover = True
+            session.add(remaining)
+            session.commit()
+
+
+# --------------------------------------------------------------------------
+# 評分模板（C17/C18/C20）
+# --------------------------------------------------------------------------
+def _serialize_template(session: Session, template: RatingTemplate) -> dict:
+    items = session.exec(
+        select(RatingTemplateItem)
+        .where(RatingTemplateItem.template_id == template.id)
+        .order_by(RatingTemplateItem.position)
+    ).all()
+    return {**template.model_dump(), "items": [i.model_dump() for i in items]}
+
+
+@router.get("/templates")
+def list_templates(session: Session = Depends(get_session)) -> list[dict]:
+    templates = session.exec(
+        select(RatingTemplate).order_by(RatingTemplate.position)
+    ).all()
+    return [_serialize_template(session, t) for t in templates]
+
+
+@router.post("/templates", status_code=201)
+def create_template(
+    data: TemplateCreate, session: Session = Depends(get_session)
+) -> dict:
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="模板名稱不可空白")
+    template = RatingTemplate(
+        name=name, position=_next_position(session, RatingTemplate)
+    )
+    session.add(template)
+    session.commit()
+    session.refresh(template)
+    return _serialize_template(session, template)
+
+
+@router.patch("/templates/{template_id}")
+def rename_template(
+    template_id: int, data: TemplateUpdate, session: Session = Depends(get_session)
+) -> dict:
+    template = _get_or_404(session, RatingTemplate, template_id, "模板")
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="模板名稱不可空白")
+    template.name = name
+    session.add(template)
+    session.commit()
+    session.refresh(template)
+    return _serialize_template(session, template)
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+def delete_template(
+    template_id: int, session: Session = Depends(get_session)
+) -> None:
+    template = _get_or_404(session, RatingTemplate, template_id, "模板")
+    for item in session.exec(
+        select(RatingTemplateItem).where(
+            RatingTemplateItem.template_id == template_id
+        )
+    ).all():
+        session.delete(item)
+    session.delete(template)
+    session.commit()
+
+
+@router.post("/templates/{template_id}/items", status_code=201)
+def add_template_item(
+    template_id: int, data: ItemCreate, session: Session = Depends(get_session)
+) -> dict:
+    _get_or_404(session, RatingTemplate, template_id, "模板")
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="項目名稱不可空白")
+    item = RatingTemplateItem(
+        template_id=template_id,
+        name=name,
+        position=_next_position(session, RatingTemplateItem, template_id=template_id),
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item.model_dump()
+
+
+@router.patch("/template-items/{item_id}")
+def rename_template_item(
+    item_id: int, data: ItemUpdate, session: Session = Depends(get_session)
+) -> dict:
+    item = _get_or_404(session, RatingTemplateItem, item_id, "項目")
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="項目名稱不可空白")
+    item.name = name
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item.model_dump()
+
+
+@router.delete("/template-items/{item_id}", status_code=204)
+def delete_template_item(
+    item_id: int, session: Session = Depends(get_session)
+) -> None:
+    item = _get_or_404(session, RatingTemplateItem, item_id, "項目")
+    session.delete(item)
+    session.commit()
+
+
+# --------------------------------------------------------------------------
+# 心得（多組，C16/C19/C21/C22）
+# --------------------------------------------------------------------------
+def _template_items(session: Session, template_id: int) -> list[RatingTemplateItem]:
+    return session.exec(
+        select(RatingTemplateItem)
+        .where(RatingTemplateItem.template_id == template_id)
+        .order_by(RatingTemplateItem.position)
+    ).all()
+
+
+def _first_template(session: Session) -> RatingTemplate | None:
+    return session.exec(
+        select(RatingTemplate).order_by(RatingTemplate.position)
+    ).first()
+
+
+@router.post("/cards/{card_id}/reviews", status_code=201)
+def create_review(
+    card_id: int, data: ReviewCreate, session: Session = Depends(get_session)
+) -> dict:
+    """新增一組心得。
+
+    內容預設來源 (C20/C22)：
+      - 指定 template_id → 用該模板的項目建立空白評分。
+      - 未指定且已有前一則心得 → 沿用前一則的模板、評分值、補充文字與心得文字。
+      - 未指定且無前一則 → 用預設第一組模板。
+    """
+    _get_or_404(session, CustomerCard, card_id, "卡片")
+    prev = session.exec(
+        select(CardReview)
+        .where(CardReview.card_id == card_id)
+        .order_by(CardReview.position.desc())
+    ).first()
+
+    review = CardReview(
+        card_id=card_id,
+        position=_next_position(session, CardReview, card_id=card_id),
+    )
+
+    if data.template_id is not None:
+        template = _get_or_404(session, RatingTemplate, data.template_id, "模板")
+        review.template_id = template.id
+        session.add(review)
+        session.commit()
+        session.refresh(review)
+        for i, item in enumerate(_template_items(session, template.id)):
+            session.add(
+                ReviewScore(
+                    review_id=review.id, item_name=item.name, score=0, position=i
+                )
+            )
+    elif prev is not None:
+        # 沿用前一則內容 (C22)
+        review.template_id = prev.template_id
+        review.text = prev.text
+        review.date = prev.date
+        session.add(review)
+        session.commit()
+        session.refresh(review)
+        prev_scores = session.exec(
+            select(ReviewScore)
+            .where(ReviewScore.review_id == prev.id)
+            .order_by(ReviewScore.position)
+        ).all()
+        for s in prev_scores:
+            session.add(
+                ReviewScore(
+                    review_id=review.id,
+                    item_name=s.item_name,
+                    score=s.score,
+                    note=s.note,
+                    position=s.position,
+                )
+            )
+    else:
+        template = _first_template(session)
+        if template is not None:
+            review.template_id = template.id
+        session.add(review)
+        session.commit()
+        session.refresh(review)
+        if template is not None:
+            for i, item in enumerate(_template_items(session, template.id)):
+                session.add(
+                    ReviewScore(
+                        review_id=review.id, item_name=item.name, score=0, position=i
+                    )
+                )
+
+    session.commit()
+    return _serialize_review(session, review)
+
+
+@router.patch("/reviews/{review_id}")
+def update_review(
+    review_id: int, data: ReviewUpdate, session: Session = Depends(get_session)
+) -> dict:
+    review = _get_or_404(session, CardReview, review_id, "心得")
+    if data.date is not None:
+        review.date = data.date
+    if data.text is not None:
+        review.text = data.text
+    session.add(review)
+    session.commit()
+    session.refresh(review)
+    return _serialize_review(session, review)
+
+
+@router.post("/reviews/{review_id}/template")
+def apply_template(
+    review_id: int,
+    data: ReviewApplyTemplate,
+    session: Session = Depends(get_session),
+) -> dict:
+    """切換心得套用的模板：以新模板項目重新建立評分（清掉舊評分）。"""
+    review = _get_or_404(session, CardReview, review_id, "心得")
+    template = _get_or_404(session, RatingTemplate, data.template_id, "模板")
+    for s in session.exec(
+        select(ReviewScore).where(ReviewScore.review_id == review_id)
+    ).all():
+        session.delete(s)
+    review.template_id = template.id
+    session.add(review)
+    for i, item in enumerate(_template_items(session, template.id)):
+        session.add(
+            ReviewScore(
+                review_id=review.id, item_name=item.name, score=0, position=i
+            )
+        )
+    session.commit()
+    session.refresh(review)
+    return _serialize_review(session, review)
+
+
+@router.delete("/reviews/{review_id}", status_code=204)
+def delete_review(review_id: int, session: Session = Depends(get_session)) -> None:
+    review = _get_or_404(session, CardReview, review_id, "心得")
+    for s in session.exec(
+        select(ReviewScore).where(ReviewScore.review_id == review_id)
+    ).all():
+        session.delete(s)
+    session.delete(review)
+    session.commit()
+
+
+@router.patch("/scores/{score_id}")
+def update_score(
+    score_id: int, data: ScoreUpdate, session: Session = Depends(get_session)
+) -> dict:
+    score = _get_or_404(session, ReviewScore, score_id, "評分項目")
+    if data.score is not None:
+        if not 0 <= data.score <= 10:
+            raise HTTPException(status_code=422, detail="分數須介於 0~10")
+        score.score = data.score
+    if data.note is not None:
+        score.note = data.note
+    session.add(score)
+    session.commit()
+    session.refresh(score)
+    return score.model_dump()
 
 
 def _renumber(session: Session, board_id: int) -> None:
