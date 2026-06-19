@@ -58,6 +58,10 @@ class BoardMove(BaseModel):
     position: int  # 在所屬養身館中的新排序索引（0 起算）
 
 
+class SortModeUpdate(BaseModel):
+    mode: str  # "unicode"（預設/標題）| "manual"（手動）
+
+
 class CardCreate(BaseModel):
     title: str
 
@@ -86,12 +90,29 @@ class TemplateUpdate(BaseModel):
     name: str
 
 
+class ItemSpec(BaseModel):
+    name: str
+    item_type: str = "score"  # "score" | "yesno"
+
+
+class TemplateReplace(BaseModel):
+    """整批覆蓋模板（名稱 + 全部項目），供前端「儲存」草稿用。"""
+    name: str
+    items: list[ItemSpec] = []
+
+
 class ItemCreate(BaseModel):
     name: str
+    item_type: str = "score"  # "score" | "yesno"
 
 
 class ItemUpdate(BaseModel):
-    name: str
+    name: str | None = None
+    item_type: str | None = None  # "score" | "yesno"
+
+
+class ItemMove(BaseModel):
+    direction: str  # "up" | "down"
 
 
 class ReviewCreate(BaseModel):
@@ -106,6 +127,7 @@ class ReviewUpdate(BaseModel):
 class ScoreUpdate(BaseModel):
     score: int | None = None
     note: str | None = None
+    yesno_value: str | None = None  # "" | "有" | "無"
 
 
 class ReviewApplyTemplate(BaseModel):
@@ -301,6 +323,50 @@ def move_board(
     return {"ok": True}
 
 
+@router.post("/boards/{board_id}/sort-mode")
+def set_sort_mode(
+    board_id: int, data: SortModeUpdate, session: Session = Depends(get_session)
+) -> dict:
+    """切換看板排序方式 (C10)，並處理手動排序的保存／還原。
+
+    - 切到 "unicode"（預設/標題）：先把目前的 position 存進 manual_position
+      作為手動排序快照，再依標題標準 Unicode 重新編號 position（整個看板套用預設邏輯）。
+    - 切到 "manual"（手動）：依 manual_position 快照重新編號 position，
+      還原上次的手動排序。
+    """
+    if data.mode not in ("unicode", "manual"):
+        raise HTTPException(status_code=422, detail="排序方式須為 unicode 或 manual")
+    board = _get_or_404(session, Board, board_id, "看板")
+    if board.sort_mode == data.mode:
+        return {"ok": True}  # 模式未變更，不更動排序
+
+    cards = session.exec(
+        select(CustomerCard)
+        .where(CustomerCard.board_id == board_id)
+        .order_by(CustomerCard.position)
+    ).all()
+
+    if data.mode == "unicode":
+        # 1) 保存目前手動排序快照
+        for c in cards:
+            c.manual_position = c.position
+        # 2) 依標題 Unicode 重新編號（Python str 比較即碼點順序）
+        for i, c in enumerate(sorted(cards, key=lambda c: c.title)):
+            c.position = i
+            session.add(c)
+    else:  # manual：依快照還原，重新編號避免重複/空洞
+        for i, c in enumerate(
+            sorted(cards, key=lambda c: (c.manual_position, c.id))
+        ):
+            c.position = i
+            session.add(c)
+
+    board.sort_mode = data.mode
+    session.add(board)
+    session.commit()
+    return {"ok": True}
+
+
 @router.delete("/boards/{board_id}", status_code=204)
 def delete_board(board_id: int, session: Session = Depends(get_session)) -> None:
     board = _get_or_404(session, Board, board_id, "看板")
@@ -324,10 +390,12 @@ def create_card(
     title = data.title.strip()
     if not title:
         raise HTTPException(status_code=422, detail="卡片標題不可空白")
+    pos = _next_position(session, CustomerCard, board_id=board_id)
     card = CustomerCard(
         board_id=board_id,
         title=title,
-        position=_next_position(session, CustomerCard, board_id=board_id),
+        position=pos,
+        manual_position=pos,  # 新卡片的手動排序快照與目前位置一致
     )
     session.add(card)
     session.commit()
@@ -553,6 +621,45 @@ def rename_template(
     return _serialize_template(session, template)
 
 
+@router.put("/templates/{template_id}")
+def replace_template(
+    template_id: int, data: TemplateReplace, session: Session = Depends(get_session)
+) -> dict:
+    """整批覆蓋模板：更新名稱並以新的項目清單取代全部既有項目。
+
+    不影響既有心得（心得在建立時已快照項目）；之後用此模板建立的新心得才會套用。
+    """
+    template = _get_or_404(session, RatingTemplate, template_id, "模板")
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="模板名稱不可空白")
+    for it in data.items:
+        if not it.name.strip():
+            raise HTTPException(status_code=422, detail="項目名稱不可空白")
+        if it.item_type not in ("score", "yesno"):
+            raise HTTPException(status_code=422, detail="項目類型須為 score 或 yesno")
+    template.name = name
+    session.add(template)
+    # 刪除既有項目，再依新清單重建
+    for old in session.exec(
+        select(RatingTemplateItem).where(
+            RatingTemplateItem.template_id == template_id
+        )
+    ).all():
+        session.delete(old)
+    session.flush()
+    for i, it in enumerate(data.items):
+        session.add(RatingTemplateItem(
+            template_id=template_id,
+            name=it.name.strip(),
+            item_type=it.item_type,
+            position=i,
+        ))
+    session.commit()
+    session.refresh(template)
+    return _serialize_template(session, template)
+
+
 @router.delete("/templates/{template_id}", status_code=204)
 def delete_template(
     template_id: int, session: Session = Depends(get_session)
@@ -576,9 +683,12 @@ def add_template_item(
     name = data.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="項目名稱不可空白")
+    if data.item_type not in ("score", "yesno"):
+        raise HTTPException(status_code=422, detail="項目類型須為 score 或 yesno")
     item = RatingTemplateItem(
         template_id=template_id,
         name=name,
+        item_type=data.item_type,
         position=_next_position(session, RatingTemplateItem, template_id=template_id),
     )
     session.add(item)
@@ -592,14 +702,84 @@ def rename_template_item(
     item_id: int, data: ItemUpdate, session: Session = Depends(get_session)
 ) -> dict:
     item = _get_or_404(session, RatingTemplateItem, item_id, "項目")
-    name = data.name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="項目名稱不可空白")
-    item.name = name
+    if data.name is not None:
+        name = data.name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="項目名稱不可空白")
+        item.name = name
+    if data.item_type is not None:
+        if data.item_type not in ("score", "yesno"):
+            raise HTTPException(status_code=422, detail="項目類型須為 score 或 yesno")
+        item.item_type = data.item_type
     session.add(item)
     session.commit()
     session.refresh(item)
     return item.model_dump()
+
+
+@router.post("/template-items/{item_id}/move")
+def move_template_item(
+    item_id: int, data: ItemMove, session: Session = Depends(get_session)
+) -> dict:
+    """調整模板項目的上下順序。"""
+    if data.direction not in ("up", "down"):
+        raise HTTPException(status_code=422, detail="方向須為 up 或 down")
+    item = _get_or_404(session, RatingTemplateItem, item_id, "項目")
+    siblings = session.exec(
+        select(RatingTemplateItem)
+        .where(RatingTemplateItem.template_id == item.template_id)
+        .order_by(RatingTemplateItem.position)
+    ).all()
+    idx = next((i for i, x in enumerate(siblings) if x.id == item_id), None)
+    if idx is None:
+        return {"ok": True}
+    if data.direction == "up" and idx > 0:
+        other = siblings[idx - 1]
+    elif data.direction == "down" and idx < len(siblings) - 1:
+        other = siblings[idx + 1]
+    else:
+        return {"ok": True}  # 已在邊界
+    item.position, other.position = other.position, item.position
+    session.add(item)
+    session.add(other)
+    session.commit()
+    return {"ok": True}
+
+
+class CopyToTarget(BaseModel):
+    target_id: int
+
+
+@router.post("/templates/{source_id}/copy-to")
+def copy_template_to(
+    source_id: int, data: CopyToTarget, session: Session = Depends(get_session)
+) -> dict:
+    """將來源模板的所有項目複製並覆蓋套用到目標模板。"""
+    if source_id == data.target_id:
+        raise HTTPException(status_code=422, detail="來源與目標模板不能相同")
+    source = _get_or_404(session, RatingTemplate, source_id, "來源模板")
+    _get_or_404(session, RatingTemplate, data.target_id, "目標模板")
+    # 刪除目標既有項目
+    for it in session.exec(
+        select(RatingTemplateItem).where(RatingTemplateItem.template_id == data.target_id)
+    ).all():
+        session.delete(it)
+    # 從來源複製
+    for it in session.exec(
+        select(RatingTemplateItem)
+        .where(RatingTemplateItem.template_id == source_id)
+        .order_by(RatingTemplateItem.position)
+    ).all():
+        session.add(RatingTemplateItem(
+            template_id=data.target_id,
+            name=it.name,
+            item_type=it.item_type,
+            position=it.position,
+        ))
+    session.commit()
+    return _serialize_template(session, session.get(
+        RatingTemplate, data.target_id
+    ))
 
 
 @router.delete("/template-items/{item_id}", status_code=204)
@@ -660,7 +840,8 @@ def create_review(
         for i, item in enumerate(_template_items(session, template.id)):
             session.add(
                 ReviewScore(
-                    review_id=review.id, item_name=item.name, score=0, position=i
+                    review_id=review.id, item_name=item.name,
+                    item_type=item.item_type, score=0, position=i
                 )
             )
     elif prev is not None:
@@ -681,7 +862,9 @@ def create_review(
                 ReviewScore(
                     review_id=review.id,
                     item_name=s.item_name,
+                    item_type=s.item_type,
                     score=s.score,
+                    yesno_value=s.yesno_value,
                     note=s.note,
                     position=s.position,
                 )
@@ -697,7 +880,8 @@ def create_review(
             for i, item in enumerate(_template_items(session, template.id)):
                 session.add(
                     ReviewScore(
-                        review_id=review.id, item_name=item.name, score=0, position=i
+                        review_id=review.id, item_name=item.name,
+                        item_type=item.item_type, score=0, position=i
                     )
                 )
 
@@ -738,11 +922,53 @@ def apply_template(
     for i, item in enumerate(_template_items(session, template.id)):
         session.add(
             ReviewScore(
-                review_id=review.id, item_name=item.name, score=0, position=i
+                review_id=review.id, item_name=item.name,
+                item_type=item.item_type, score=0, position=i
             )
         )
     session.commit()
     session.refresh(review)
+    return _serialize_review(session, review)
+
+
+@router.post("/reviews/{review_id}/sync")
+def sync_review_template(
+    review_id: int, session: Session = Depends(get_session)
+) -> dict:
+    """將心得更新為其所屬模板的最新項目。
+
+    相同名稱（且類型相同）的項目會保留原有評分與補充文字；
+    模板新增的項目以空白加入；模板已移除的項目從心得刪除。
+    """
+    review = _get_or_404(session, CardReview, review_id, "心得")
+    if review.template_id is None:
+        raise HTTPException(status_code=422, detail="此心得未綁定模板")
+    template = session.get(RatingTemplate, review.template_id)
+    if template is None:
+        raise HTTPException(status_code=404, detail="模板已刪除，無法更新")
+    items = _template_items(session, template.id)
+    old_scores = {
+        s.item_name: s
+        for s in session.exec(
+            select(ReviewScore).where(ReviewScore.review_id == review_id)
+        ).all()
+    }
+    for s in old_scores.values():
+        session.delete(s)
+    session.flush()
+    for i, item in enumerate(items):
+        prev = old_scores.get(item.name)
+        keep = prev is not None and prev.item_type == item.item_type
+        session.add(ReviewScore(
+            review_id=review.id,
+            item_name=item.name,
+            item_type=item.item_type,
+            score=prev.score if keep else 0,
+            yesno_value=prev.yesno_value if keep else "",
+            note=prev.note if prev is not None else "",
+            position=i,
+        ))
+    session.commit()
     return _serialize_review(session, review)
 
 
@@ -768,6 +994,10 @@ def update_score(
         score.score = data.score
     if data.note is not None:
         score.note = data.note
+    if data.yesno_value is not None:
+        if data.yesno_value not in ("", "有", "無"):
+            raise HTTPException(status_code=422, detail="有/無值須為空字串、有 或 無")
+        score.yesno_value = data.yesno_value
     session.add(score)
     session.commit()
     session.refresh(score)

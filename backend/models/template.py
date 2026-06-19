@@ -18,3 +18,5 @@ class RatingTemplateItem(SQLModel, table=True):
     template_id: int = Field(foreign_key="ratingtemplate.id", index=True)
     name: str
     position: int = 0
+    # 項目類型："score"（0~10 滑桿）| "yesno"（有/無）
+    item_type: str = "score"

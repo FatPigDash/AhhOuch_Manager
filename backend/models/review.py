@@ -24,6 +24,9 @@ class ReviewScore(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     review_id: int = Field(foreign_key="cardreview.id", index=True)
     item_name: str  # 項目名稱（自模板快照）
-    score: int = 0  # 0~10 (C19)
-    note: str = ""  # 補充文字 (C19)
+    # 項目類型（自模板快照）："score" | "yesno"
+    item_type: str = "score"
+    score: int = 0       # item_type="score" 時有效，0~10 (C19)
+    yesno_value: str = ""  # item_type="yesno" 時有效："" 未選 / "有" / "無"
+    note: str = ""       # 補充文字 (C19)
     position: int = 0

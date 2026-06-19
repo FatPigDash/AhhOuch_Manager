@@ -23,6 +23,14 @@ _COLUMN_MIGRATIONS: dict[str, dict[str, str]] = {
         "nationality": "TEXT DEFAULT ''",
         "intro_text": "TEXT DEFAULT ''",
         "intro_collapsed": "INTEGER DEFAULT 0",
+        "manual_position": "INTEGER DEFAULT 0",
+    },
+    "ratingtemplateitem": {
+        "item_type": "TEXT DEFAULT 'score'",
+    },
+    "reviewscore": {
+        "item_type": "TEXT DEFAULT 'score'",
+        "yesno_value": "TEXT DEFAULT ''",
     },
 }
 
@@ -39,6 +47,11 @@ def _migrate() -> None:
             for col, ddl in columns.items():
                 if col not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+                    # 新增的手動排序快照欄位以既有 position 回填，避免既有卡片排序遺失
+                    if table == "customercard" and col == "manual_position":
+                        conn.execute(
+                            text("UPDATE customercard SET manual_position = position")
+                        )
         conn.commit()
 
 

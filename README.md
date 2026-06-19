@@ -34,14 +34,24 @@ npm install
 
 **方式 A — 一鍵啟動（建議日常使用）**
 
-先建置一次前端，之後雙擊 `run_dev.bat` 即可（後端會直接提供已建置的 Vue 介面）：
+後端直接提供已建置的 Vue 介面，瀏覽器開 `http://localhost:8000`。
+
+**首次啟動，或修改了前端程式碼之後，需先重新建置前端：**
 
 ```bat
 cd frontend\desktop
 npm run build
-cd ..\..
-run_dev.bat
 ```
+
+**建置完成後，回到專案根目錄再啟動後端：**
+
+```powershell
+cd ..\..
+.\run_dev.bat
+```
+
+> `cd ..\..` 會從 `frontend\desktop` 回到專案根目錄（`AhhOuch_Edit\`）。
+> PowerShell 需加 `.\` 前綴才能執行當前目錄的 `.bat` 檔；`run_dev.bat` 必須在根目錄執行，否則找不到 `run.py`。
 
 啟動後會自動開啟瀏覽器（`http://localhost:8000`）。
 
@@ -51,7 +61,7 @@ run_dev.bat
 
 ```bat
 REM 終端機 1：後端
-python run.py
+用方法A執行
 ```
 
 ```bat
@@ -91,10 +101,10 @@ version  = "1.0.0"
 
 ## 5. 資料與輸出位置
 
-| 項目 | 位置 |
-| --- | --- |
-| 資料庫與上傳圖片 | `DATA/`（`ahhouch.db`、`images/`）|
-| 打包後的 exe | `打包輸出/` |
+| 項目             | 位置                               |
+| ---------------- | ---------------------------------- |
+| 資料庫與上傳圖片 | `DATA/`（`ahhouch.db`、`images/`） |
+| 打包後的 exe     | `打包輸出/`                        |
 
 > 開發模式下 `DATA/` 位於專案根目錄；打包後的 exe 則在 exe 所在目錄建立 `DATA/`。
 

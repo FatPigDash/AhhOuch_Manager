@@ -10,6 +10,7 @@ export default defineConfig({
     // 開發時前端跑 5173，API 代理到後端 8000，避免 CORS。
     proxy: {
       '/api': 'http://localhost:8000',
+      '/images': 'http://localhost:8000',
     },
   },
   build: {

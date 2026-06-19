@@ -49,6 +49,9 @@ export const api = {
   deleteBoard: (id) => request('DELETE', `/api/customer/boards/${id}`),
   // 看板拖曳排序 (C5)：position 為新的左右索引
   moveBoard: (id, data) => request('POST', `/api/customer/boards/${id}/move`, data),
+  // 切換排序方式 (C10)：mode = "unicode"（預設/標題）| "manual"（手動）
+  // 後端會保存手動排序快照（切預設時）或還原快照（切手動時）
+  setSortMode: (id, mode) => request('POST', `/api/customer/boards/${id}/sort-mode`, { mode }),
 
   // 卡片 (C7/C8/C11)
   createCard: (boardId, data) => request('POST', `/api/customer/boards/${boardId}/cards`, data),
@@ -75,13 +78,21 @@ export const api = {
   listTemplates: () => request('GET', '/api/customer/templates'),
   createTemplate: (name) => request('POST', '/api/customer/templates', { name }),
   renameTemplate: (id, name) => request('PATCH', `/api/customer/templates/${id}`, { name }),
+  // 整批覆蓋模板（名稱 + 全部項目），供「儲存」草稿用
+  replaceTemplate: (id, data) => request('PUT', `/api/customer/templates/${id}`, data),
   deleteTemplate: (id) => request('DELETE', `/api/customer/templates/${id}`),
   addTemplateItem: (templateId, name) =>
     request('POST', `/api/customer/templates/${templateId}/items`, { name }),
   renameTemplateItem: (itemId, name) =>
     request('PATCH', `/api/customer/template-items/${itemId}`, { name }),
+  setTemplateItemType: (itemId, item_type) =>
+    request('PATCH', `/api/customer/template-items/${itemId}`, { item_type }),
+  moveTemplateItem: (itemId, direction) =>
+    request('POST', `/api/customer/template-items/${itemId}/move`, { direction }),
   deleteTemplateItem: (itemId) =>
     request('DELETE', `/api/customer/template-items/${itemId}`),
+  copyTemplateTo: (sourceId, targetId) =>
+    request('POST', `/api/customer/templates/${sourceId}/copy-to`, { target_id: targetId }),
 
   // 心得 (C16/C19/C21/C22)
   createReview: (cardId, data = {}) =>
@@ -89,6 +100,8 @@ export const api = {
   updateReview: (id, data) => request('PATCH', `/api/customer/reviews/${id}`, data),
   applyReviewTemplate: (reviewId, templateId) =>
     request('POST', `/api/customer/reviews/${reviewId}/template`, { template_id: templateId }),
+  // 將心得更新為其所屬模板的最新項目（保留同名項目評分）
+  syncReviewTemplate: (reviewId) => request('POST', `/api/customer/reviews/${reviewId}/sync`),
   deleteReview: (id) => request('DELETE', `/api/customer/reviews/${id}`),
   updateScore: (id, data) => request('PATCH', `/api/customer/scores/${id}`, data),
 

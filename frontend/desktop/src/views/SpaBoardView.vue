@@ -123,8 +123,16 @@ async function onBoardEnd(evt) {
 
 async function setSort(board, mode) {
   if (board.sort_mode === mode) return
+  // 切換排序方式前先跳確認視窗（C10）
+  const msg = mode === 'unicode'
+    ? `將看板「${board.name}」改為「預設(標題)」排序？\n\n` +
+      '系統會依卡片標題重新排序整個看板，並記住你目前的手動排序；\n' +
+      '之後切回「手動」即可還原。'
+    : `將看板「${board.name}」改為「手動」排序？\n\n` +
+      '系統會還原你上次的手動排序。'
+  if (!confirm(msg)) return
   try {
-    await api.updateBoard(board.id, { sort_mode: mode })
+    await api.setSortMode(board.id, mode)
     await load()
   } catch (e) { error.value = e.message }
 }

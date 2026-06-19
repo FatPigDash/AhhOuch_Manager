@@ -17,7 +17,9 @@ class CustomerCard(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     board_id: int = Field(foreign_key="board.id", index=True)
     title: str
-    position: int = 0  # 板內手動排序位置 (C10)；看板 sort_mode="manual" 時生效
+    position: int = 0  # 板內目前顯示排序位置 (C10)
+    # 手動排序快照：切到「預設」排序前保存此值，切回「手動」時據以還原 (C10)
+    manual_position: int = 0
     # 簡介 (C14/C15)；收闔狀態 (C12)，預設開啟 → intro_collapsed=False
     nationality: str = ""
     intro_text: str = ""
