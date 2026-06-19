@@ -1,0 +1,9 @@
+# AhhOuch 後端套件清單 (X4)
+# 安裝：pip install -r requirements.txt  （或執行 install.bat）
+
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlmodel>=0.0.22
+pillow>=10.4
+python-multipart>=0.0.9   # 檔案上傳 (S3/C13)
+pyinstaller>=6.10          # 打包單一 exe (X1)

@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# PyInstaller 過程檔
+build/
+dist/
+*.spec
+
+# 打包輸出（產物不入庫）
+打包輸出/
+
+# 前端
+node_modules/
+frontend/*/dist/
+
+# 軟體輸出資料 (X6)
+DATA/
+
+# 編輯器
+.vscode/
+.idea/
