@@ -8,7 +8,7 @@
 > - [`AhhOuch 開發計畫.md`](./AhhOuch%20開發計畫.md) — 開發前的總體規劃與需求對照表（修訂歷程已移至本報告 §12）
 > - [`../CHANGELOG.md`](../CHANGELOG.md) — 版本修訂紀錄（依版次）
 >
-> 報告產生日期：2026-06-20（最後更新：2026-06-21，§12 增列 11.14–11.17 店家模式調整）
+> 報告產生日期：2026-06-20（最後更新：2026-06-21，§12 增列 11.18–11.25 社群發布平台與班表調整）
 > ｜ 對應版本：0.6.0 ｜ 狀態：**M0–M8 全部完成**
 
 ---
@@ -43,7 +43,7 @@ AhhOuch_Edit/
 │  ├─ main.py            FastAPI app、掛載 /images 與靜態前端、啟動建 DATA/+init_db
 │  ├─ version.py         讀 app.toml（唯一取值來源）
 │  ├─ config.py          路徑（開發 vs 凍結 exe 差異）、預設看板/評分項目
-│  ├─ database.py        SQLite 引擎、init_db、_migrate(補欄位)、_seed_defaults
+│  ├─ database.py        SQLite 引擎、init_db、_migrate(補欄位)、_cleanup_legacy_data(清遺留)、_seed_defaults
 │  ├─ models/            spa board card image review template store schedule publish
 │  ├─ routers/           customer.py(客人) store.py(店家+班表) publish.py(社群發布)
 │  └─ services/          image_service shift_calculator time_utils publish_service
@@ -102,9 +102,11 @@ AhhOuch_Edit/
   ↳ 後續精修（已套用）：資訊卡片封面高度加倍 §12 的 11.5、圖片燈箱 §12 的 11.7、**資訊卡片預設排序改數字自然＋其餘 Unicode 且不提供手動排序** §12 的 11.14、**詳情頁改「草稿＋儲存/取消」並把發布鈕移左下** §12 的 11.15、移除已無用的 `StoreCard.position` 欄位 §12 的 11.16。
 - **M5 店家：班表**：多行標題、出勤人員點選、出勤時段(手動 1830→18:30／自動換算)、
   發布格式、草稿(S6–S12)。**發布輸出與需求 S11 範例字字相符**。
+  ↳ 後續精修（已套用）：**出勤時段沿用出勤人員的名字排序**(顯示與發布文字一致) §12 的 11.21、**移除 `ScheduleEntry.position`（不保留手動拖曳排序）** §12 的 11.22、**出勤時段預設改自動換算** §12 的 11.23、**換算紀錄保留（載入時依 `auto_start` 還原班次格）** §12 的 11.24、編輯班表頁頂部列凍結(sticky) §12 的 11.25。
 - **M6 社群 API 串接（通用骨架）**：發布目標設定(平台/權杖/目標 ID)、一鍵發布，
   內含 LINE Messaging API 與 Telegram 實作(urllib，免新套件)。權杖回應遮蔽(只露末四碼)。
   實測點發布**真的打到 LINE API**，假權杖回乾淨的 HTTP 401 → 整條管線通(P1)。
+  ↳ 後續精修（已套用）：**平台改為 Telegram(預設)＋X，移除 LINE**（X 列為選項但自動發送未實作；LINE 殘留資料於啟動清除）§12 的 11.18、發布設定頁用語白話化＋欄位說明＋[?] 教學彈窗 §12 的 11.19、發布目標按鈕顯示「平台 名稱」＋點 pill 發送前二次確認 §12 的 11.20。
 - **M7 手機版（響應式）**：各 view 加 `@media(max-width:640px)`；看板改原生橫向捲動、
   觸控停用自訂拖曳捲動；以 375px 視窗量測驗證無水平溢出(G1)。
 - **M8 收尾與驗收**：全模組整合煙霧測試通過、重新打包 `AhhOuch_v0.6.0.exe`(27.5MB)成功、
@@ -147,8 +149,9 @@ AhhOuch_Edit/
 
 ## 9. 待辦／待確認（不阻擋現況）
 
-1. **社群自動發布實際串接**：平台最終決定（LINE？多平台？）、使用者申請官方帳號/Bot、
-   填權杖+群組 ID 後才能真正推送（§9-1）。
+1. **社群自動發布實際串接**：平台已定為 **Telegram(預設)＋X**（LINE 已移除，§12 的 11.18）。
+   Telegram 可實際推送，使用者申請 Bot、填金鑰+群組 ID 即可；**X 自動發送尚未實作**（發文需
+   OAuth 授權，目前僅列為選項、選用時手動複製貼上），日後若要自動發 X 需補 OAuth 串接（§9-1）。
 2. **資料備份／匯出匯入**：尚未實作（§9-3）。
 3. **班表發布是否需自訂樣式**：目前固定用需求範例格式（§9-4）。
 4. **圖片貼上主要來源**：截圖 vs 複製檔案，兩者皆支援，主要用法待確認（§9-2）。
@@ -202,6 +205,8 @@ python build.py
 > - 11.1 / 11.11 / 11.12 → M2（排序與拖曳）
 > - 11.2 / 11.3 / 11.4 / 11.7 / 11.13 → M3（卡片完整內容）
 > - 11.5 / 11.7 / 11.14 / 11.15 / 11.16 → M4（店家資訊卡片）
+> - 11.21 / 11.22 / 11.23 / 11.24 / 11.25 → M5（班表）
+> - 11.18 / 11.19 / 11.20 → M6（社群發布）
 > - 11.8 / 11.17 → 開發環境（Vite 代理、README、預覽設定）
 >
 > 讀法：先看 §5 里程碑的「↳」指引找到對應條目，即可掌握該功能的**最新實際行為**。
@@ -374,3 +379,79 @@ python build.py
 #### 11.17 移除壞掉的 launch.json 預覽設定
 
 - `.claude/launch.json` 移除指向不存在的 `preview_server.py` 之 `ahhouch-preview`（8030）設定；新增可用的 `ahhouch-frontend`（Vite dev、5173，`/api`・`/images` 代理到 8000 後端）以供前端預覽。
+
+### 2026-06-21 — 社群發布平台調整（M6 範圍精修）
+
+本批調整集中於**社群發布的平台選項、發布設定頁的易用性與發布動作的防呆**，未變更整體里程碑規劃。
+
+#### 11.18 發布平台改為「Telegram(預設)＋X」，移除 LINE（店家 PublishSettingsView／publish_service）
+
+**需求演進**：平台先擴充為 Telegram、X、LINE 三者並以 **Telegram 為預設**；隨後決定**移除 LINE**，最終為 **Telegram(預設)＋X 兩個**。
+
+**規則**：
+- **平台順序＝下拉選單順序，第一個為預設**（Telegram）。
+- **Telegram** 為實際實作（`urllib` 打 `sendMessage`），填金鑰＋群組 ID 即可推送。
+- **X** 僅列為**可選平台**，**自動發送尚未實作**——選 X 按自動發送會回固定訊息「X 自動發送尚未支援，請手動複製文字貼到 X」（發文需 OAuth 授權，不同於 Telegram 的 bot token 模式）。
+
+**修改內容**：
+- `backend/services/publish_service.py`：`SUPPORTED_PLATFORMS` 由 `("line","telegram")` 經 `("telegram","x","line")` 最終為 `("telegram","x")`；`send_text` 移除 LINE 分支、新增 X 分支（回未支援訊息）。
+- `backend/models/publish.py`：`PublishTarget.platform` 預設值由 `""` 改為 `"telegram"`。
+- `backend/routers/publish.py`：`TargetCreate.platform` 預設值改為 `"telegram"`。
+- `frontend/desktop/src/views/PublishSettingsView.vue`：表單預設平台 `telegram`；`PLATFORM_LABEL` 為 `{ telegram:'Telegram', x:'X' }`（去除 line）。
+- **遺留資料清除**：`backend/database.py` 新增 `_cleanup_legacy_data()`，於 `init_db()` 的 `_migrate()` 後執行 `DELETE FROM publishtarget WHERE platform='line'`（表不存在則跳過），任何既有 DB 下次啟動即自動清掉殘留的 LINE 目標，使用者不會看到。
+
+#### 11.19 發布設定頁用語白話化＋欄位說明＋[?] 教學彈窗（店家 PublishSettingsView）
+
+**問題**：原欄位名「權杖 (token)」「目標 ID」對初次使用者太專業、看不懂。
+
+**修改內容**（`PublishSettingsView.vue`）：
+- 欄位改用白話標題並在下方加一行灰色說明：名稱→「自己看的備註」、平台→「發送到哪個平台」、權杖→**「機器人金鑰」**、目標 ID→**「要發到哪個群組」**（技術名詞如 `chat_id`、`@BotFather` 保留在說明括號裡，方便對照官方文件）。
+- 群組編號 placeholder 改成實例 `例如：-1001234567890`；列表顯示由「權杖／目標」改為「金鑰／群組」。
+- 「機器人金鑰」與「要發到哪個群組」標題後各加一顆藍色圓形 **[?]** 按鈕（`type="button"` 防誤送出），點擊彈出教學視窗：
+  - **金鑰教學**：@BotFather → `/newbot` → 命名 → 取 `bot` 結尾使用者名稱 → 複製 HTTP API token；提醒金鑰勿外流、可 `/revoke` 重產。
+  - **群組編號教學**：建立 bot → 加進群組 → 發訊息 → 開 `getUpdates` 網址 → 找 `"chat":{"id":-100…}`；提醒群組編號常為負數、沒資料就重發訊息再重整。
+- 兩個彈窗皆 `@click.self` **點視窗外（背景遮罩）自動關閉**，另有右上 ✕。此頁原無 modal，連同 `.help-btn` 一起新增整組樣式。
+- ⚠ 目前 [?] 與長說明僅在「新增發布目標」表單；編輯既有目標的對應欄位尚未加。
+
+#### 11.20 發布目標按鈕顯示「平台 名稱」＋發送前二次確認（店家 StoreCardDetailView／ScheduleEditView）
+
+- **顯示平台**：卡片／班表發布視窗的「自動發布到」pill 由 `📤 {{ t.name }}` 改為 `📤 {{ platformLabel(t.platform) }} {{ t.name }}`（例：`📤 Telegram 111`）。兩個 view 各加 `platformLabel()`（`telegram→Telegram`、`x→X`）。
+- **二次確認**：`sendToTarget` 開頭加 `confirm("確定要發布到「Telegram 111」嗎？")`，按取消即不送出，避免誤觸 pill 直接發出去。
+
+### 2026-06-21 — 班表 UX 與資料模型調整（M5 範圍精修）
+
+本批調整集中於**班表編輯頁的排序一致性、預設模式、換算紀錄保留與頂部列凍結**，未變更整體里程碑規劃。
+
+#### 11.21 出勤時段沿用出勤人員的名字排序（店家 ScheduleEditView／store.py）
+
+**需求**：出勤人員已依名字排序（同 §11.14 的 `_name_sort_key`）；將同一套邏輯套用到下方「出勤時段」，讓兩區順序一致（如 `#21 → #61 → #133 → #199`）。
+
+**修改內容**（`backend/routers/store.py`）：
+- `_serialize_schedule`：序列化後的 entries 依 `_name_sort_key(e["name"])` 排序再回傳（編輯畫面照名字排）。
+- `schedule_publish_text`：發布文字也用同排序，**發布順序與畫面一致**（不再是加入順序）。
+- 重用 store.py 既有的 `_name_sort_key`，不另寫一份，避免規則分歧。
+
+#### 11.22 移除 `ScheduleEntry.position` 欄位（不保留手動拖曳排序）
+
+- 因 §11.21 改為依名字排序，且此處**不保留手動拖曳排序**功能，`ScheduleEntry.position` 已無用 → 從 `backend/models/schedule.py` 移除，`add_entry` 不再寫入。
+- `_serialize_schedule`／`schedule_publish_text` 的 `.order_by(ScheduleEntry.position)` 改為 `.order_by(ScheduleEntry.id)`（只作穩定基準，最終仍以名字排序為準）。
+- **遷移**：`backend/database.py` 的 `_DROP_COLUMNS` 新增 `"scheduleentry": ["position"]`，既有 DB 啟動時執行 `ALTER TABLE scheduleentry DROP COLUMN position`。
+- `_next_position` 函式保留（`StoreCardImage` 圖片排序仍在用）。
+
+#### 11.23 出勤時段預設改為「自動換算」（店家 schedule 模型）
+
+- `backend/models/schedule.py`：`ScheduleEntry.time_mode` 預設值由 `"manual"` 改為 `"auto"`，新加入的出勤人員進編輯畫面即為「✓ 自動換算」。
+- 僅影響**之後新加入**的人員；既有人員保留原模式（預設值只作用於新資料）。
+
+#### 11.24 換算班次紀錄保留（店家 ScheduleEditView）
+
+**需求**：輸入上班時間換算班次後保留紀錄，下次編輯能直接從紀錄勾選，不必再按一次「換算班次」。
+
+**作法**：班次格是由上班時間（`auto_start`，本就持久化於 DB）決定的固定計算，故**不另存班次清單**，而在載入時重算還原。
+- `frontend/desktop/src/views/ScheduleEditView.vue`：`load()` 後呼叫新增的 `restoreShiftGrids()`——逐一檢查每位人員，若有 `auto_start` 就呼叫 `shiftSlots` 還原班次格（`computedShifts`）並回填輸入框。每次重載（含切換出勤人員後）皆自動還原，已勾選時段維持勾選。
+
+#### 11.25 編輯班表頁頂部列凍結（店家 ScheduleEditView）
+
+- `ScheduleEditView.vue` 的 `.page-head`（返回／標題／發布）改 `position: sticky; top:0; z-index:10`，捲動時固定在畫面頂端。
+- 背景設頁面底色 `#f5f7fa`、以 `margin-top:-24px` 補滿 `app-main` 上方留白避免內容透出，並加淡陰影呈現浮起層次；手機版另調負邊距／內距。
+- ⚠ 店家資訊卡片詳情頁（`StoreCardDetailView.vue`）有相同的 `.page-head`＋底部發布列，目前未凍結。
