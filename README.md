@@ -43,6 +43,8 @@ cd frontend\desktop
 npm run build
 ```
 
+cd "D:\Fat Pig Project\AhhOuch_Edit\frontend\desktop"
+
 **建置完成後，回到專案根目錄再啟動後端：**
 
 ```powershell

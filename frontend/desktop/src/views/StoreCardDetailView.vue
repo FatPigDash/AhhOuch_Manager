@@ -11,6 +11,7 @@ const card = ref(null)
 const error = ref('')
 const fileInput = ref(null)
 const showPublish = ref(false)
+const lightboxUrl = ref(null)
 const variant = ref('full') // full | short
 const publishNode = ref(null)
 const copied = ref(false)
@@ -121,10 +122,10 @@ onBeforeUnmount(() => window.removeEventListener('paste', onPaste))
     <div class="panel">
       <div class="panel-body">
         <div class="images">
-          <div v-for="img in card.images" :key="img.id" class="img-cell" :class="{ cover: img.is_cover }">
+          <div v-for="img in card.images" :key="img.id" class="img-cell" :class="{ cover: img.is_cover }" style="cursor:zoom-in" @click="lightboxUrl = img.url">
             <img :src="img.url" alt="" />
             <span v-if="img.is_cover" class="cover-badge">封面</span>
-            <div class="img-actions">
+            <div class="img-actions" @click.stop>
               <button v-if="!img.is_cover" @click="setCover(img)" title="設為封面">★</button>
               <button @click="removeImage(img)" title="刪除">✕</button>
             </div>
@@ -145,6 +146,14 @@ onBeforeUnmount(() => window.removeEventListener('paste', onPaste))
           <span>簡短介紹</span>
           <textarea v-model="card.short_intro" rows="2" @blur="saveCard({ short_intro: card.short_intro })"></textarea>
         </label>
+      </div>
+    </div>
+
+    <!-- 燈箱 -->
+    <div v-if="lightboxUrl" class="lightbox-backdrop" @click.self="lightboxUrl = null">
+      <div class="lightbox-box">
+        <button class="lightbox-close" @click="lightboxUrl = null">✕</button>
+        <img :src="lightboxUrl" alt="" />
       </div>
     </div>
 
@@ -236,4 +245,10 @@ onBeforeUnmount(() => window.removeEventListener('paste', onPaste))
 .chip-btn { border: 1px solid #2680c2; color: #0a558c; background: #e3f0fb; border-radius: 999px; padding: 5px 12px; font-size: 0.85rem; }
 button.ghost { background: #e4e7eb; color: #334e68; }
 button.primary { background: #2680c2; color: #fff; }
+
+.lightbox-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.82); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.lightbox-box { position: relative; max-width: 90vw; max-height: 90vh; }
+.lightbox-box img { display: block; max-width: 90vw; max-height: 90vh; border-radius: 8px; object-fit: contain; }
+.lightbox-close { position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 50%; border: none; background: #fff; color: #334e68; font-size: 1rem; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 1; }
+.lightbox-close:hover { background: #cf1124; color: #fff; }
 </style>

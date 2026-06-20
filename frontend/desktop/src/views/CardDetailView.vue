@@ -18,6 +18,7 @@ function showTplMsg(msg) {
   tplMsgTimer = setTimeout(() => { tplMsg.value = '' }, 3500)
 }
 const fileInput = ref(null)
+const lightboxUrl = ref(null)
 
 // --- 簡介草稿狀態 ---
 const introSnapshot = ref('')
@@ -414,10 +415,10 @@ onBeforeUnmount(() => {
       <div v-show="!card.intro_collapsed" class="panel-body">
         <p v-if="introMsg" class="tpl-feedback is-ok">{{ introMsg }}</p>
         <div class="images">
-          <div v-for="img in card.images" :key="img.id" class="img-cell" :class="{ cover: img.is_cover }">
+          <div v-for="img in card.images" :key="img.id" class="img-cell" :class="{ cover: img.is_cover }" style="cursor:zoom-in" @click="lightboxUrl = img.url">
             <img :src="img.url" alt="" />
             <span v-if="img.is_cover" class="cover-badge">封面</span>
-            <div class="img-actions">
+            <div class="img-actions" @click.stop>
               <button v-if="!img.is_cover" @click="setCover(img)" title="設為封面">★</button>
               <button @click="removeImage(img)" title="刪除">✕</button>
             </div>
@@ -584,6 +585,13 @@ onBeforeUnmount(() => {
       </template>
     </div>
   </section>
+  <!-- 燈箱 -->
+  <div v-if="lightboxUrl" class="lightbox-backdrop" @click.self="lightboxUrl = null">
+    <div class="lightbox-box">
+      <button class="lightbox-close" @click="lightboxUrl = null">✕</button>
+      <img :src="lightboxUrl" alt="" />
+    </div>
+  </div>
   <p v-else-if="error" class="error">{{ error }}</p>
 </template>
 
@@ -666,4 +674,10 @@ button.primary { background: #2680c2; color: #fff; border: none; border-radius: 
 button.primary:disabled { opacity: 0.45; cursor: default; }
 button.danger { background: #fbeae5; color: #cf1124; border: none; border-radius: 8px; padding: 6px 12px; }
 button.danger.small, button.danger { font-size: 0.85rem; }
+
+.lightbox-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.82); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.lightbox-box { position: relative; max-width: 90vw; max-height: 90vh; }
+.lightbox-box img { display: block; max-width: 90vw; max-height: 90vh; border-radius: 8px; object-fit: contain; }
+.lightbox-close { position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 50%; border: none; background: #fff; color: #334e68; font-size: 1rem; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 1; }
+.lightbox-close:hover { background: #cf1124; color: #fff; }
 </style>
