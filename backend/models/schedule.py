@@ -22,7 +22,7 @@ class ScheduleEntry(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     schedule_id: int = Field(foreign_key="schedule.id", index=True)
     store_card_id: int = Field(foreign_key="storecard.id", index=True)
-    time_mode: str = "manual"  # "manual" | "auto"
+    time_mode: str = "auto"  # "manual" | "auto"；新出勤人員預設自動換算
     auto_start: str = ""        # 自動換算的上班開始時間 (S10)
     slots_json: str = "[]"      # 顯示用時段清單（JSON 字串）
-    position: int = 0
+    # 出勤時段固定依名字排序（同出勤人員），不保留手動拖曳排序。

@@ -25,7 +25,20 @@ const sendMsg = ref('')
 async function load() {
   try {
     schedule.value = await api.getSchedule(props.id)
+    await restoreShiftGrids()
   } catch (e) { error.value = e.message }
+}
+// 換算紀錄保留：已存過上班時間（auto_start）的人員，載入時依該時間重算出班次格，
+// 讓下次編輯不必再按一次「換算班次」就能直接從紀錄勾選。
+async function restoreShiftGrids() {
+  for (const entry of schedule.value.entries) {
+    if (!entry.auto_start) continue
+    autoStartInput[entry.id] = entry.auto_start  // 同步輸入框，顯示上次的上班時間
+    try {
+      const { slots } = await api.shiftSlots(entry.auto_start)
+      computedShifts[entry.id] = slots
+    } catch (_) { /* 換算失敗就略過，使用者可再手動換算 */ }
+  }
 }
 async function loadCards() {
   try { storeCards.value = await api.listStoreCards() } catch (e) { error.value = e.message }
@@ -262,7 +275,11 @@ onMounted(() => { load(); loadCards() })
 
 <style scoped>
 .edit { max-width: 760px; }
-.page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+/* 紅框區域凍結：捲動時固定在畫面頂端。背景補滿 app-main 上方留白，內容不會透出。 */
+.page-head { display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 10; margin: -24px 0 12px; padding: 16px 0 12px; background: #f5f7fa; box-shadow: 0 4px 6px -4px rgba(16, 42, 67, 0.18); }
+@media (max-width: 640px) {
+  .page-head { margin: -14px 0 12px; padding: 12px 0 10px; }  /* 手機 app-main 留白較小 */
+}
 .page-head h1 { margin: 0; flex: 1; font-size: 1.4rem; }
 .back { background: #e4e7eb; border: none; border-radius: 8px; padding: 6px 12px; color: #334e68; }
 .publish-btn { white-space: nowrap; }

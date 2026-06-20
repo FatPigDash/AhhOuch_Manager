@@ -302,11 +302,14 @@ def _serialize_schedule(session: Session, schedule: Schedule) -> dict:
     entries = session.exec(
         select(ScheduleEntry)
         .where(ScheduleEntry.schedule_id == schedule.id)
-        .order_by(ScheduleEntry.position)
+        .order_by(ScheduleEntry.id)
     ).all()
+    serialized = [_serialize_entry(session, e) for e in entries]
+    # 出勤時段沿用與出勤人員相同的名字排序（數字自然 + 其餘 Unicode）。
+    serialized.sort(key=lambda e: _name_sort_key(e["name"]))
     return {
         **schedule.model_dump(),
-        "entries": [_serialize_entry(session, e) for e in entries],
+        "entries": serialized,
     }
 
 
@@ -390,7 +393,6 @@ def add_entry(
     entry = ScheduleEntry(
         schedule_id=schedule_id,
         store_card_id=data.store_card_id,
-        position=_next_position(session, ScheduleEntry, schedule_id=schedule_id),
     )
     session.add(entry)
     session.commit()
@@ -441,15 +443,19 @@ def schedule_publish_text(
     entries = session.exec(
         select(ScheduleEntry)
         .where(ScheduleEntry.schedule_id == schedule_id)
-        .order_by(ScheduleEntry.position)
+        .order_by(ScheduleEntry.id)
     ).all()
+    # 沿用與出勤人員相同的名字排序，發布文字順序與編輯畫面一致。
+    pairs = [
+        (card, entry)
+        for entry in entries
+        if (card := session.get(StoreCard, entry.store_card_id)) is not None
+    ]
+    pairs.sort(key=lambda p: _name_sort_key(p[0].name))
     blocks: list[str] = []
     if schedule.title.strip():
         blocks.append(schedule.title.strip())
-    for entry in entries:
-        card = session.get(StoreCard, entry.store_card_id)
-        if card is None:
-            continue
+    for card, entry in pairs:
         lines = [card.name]
         if card.short_intro.strip():
             lines.append(card.short_intro.strip())

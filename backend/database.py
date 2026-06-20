@@ -39,6 +39,7 @@ _COLUMN_MIGRATIONS: dict[str, dict[str, str]] = {
 # 否則殘留的 NOT NULL 欄位會讓新版的 INSERT 失敗）。SQLite 3.35+ 支援 DROP COLUMN。
 _DROP_COLUMNS: dict[str, list[str]] = {
     "storecard": ["position"],  # 排序改為依名字計算，不再保存手動排序位置
+    "scheduleentry": ["position"],  # 出勤時段改依名字排序，不保留手動拖曳排序
 }
 
 
