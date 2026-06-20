@@ -13,7 +13,7 @@ from sqlmodel import Field, SQLModel
 class PublishTarget(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str                      # 顯示名稱，如「工作室 LINE 群」
-    platform: str = ""             # "line" | "telegram" | ...（空=尚未指定）
+    platform: str = "telegram"     # "telegram"（預設）| "x" | "line"
     token: str = ""                # channel access token / bot token
     target_id: str = ""            # 推送目標（LINE groupId / Telegram chat_id）
     enabled: bool = True

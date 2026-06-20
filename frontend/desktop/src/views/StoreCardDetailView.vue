@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import html2canvas from 'html2canvas'
 import { api } from '../api'
 
@@ -8,7 +8,9 @@ const props = defineProps({ id: { type: [String, Number], required: true } })
 const router = useRouter()
 
 const card = ref(null)
+const saved = ref(null)   // 最後一次已儲存的文字欄位快照，用於判斷是否有未儲存變更
 const error = ref('')
+const savedMsg = ref('')
 const fileInput = ref(null)
 const showPublish = ref(false)
 const lightboxUrl = ref(null)
@@ -18,30 +20,75 @@ const copied = ref(false)
 const targets = ref([])
 const sendMsg = ref('')
 
+// 發布目標按鈕顯示「平台 名稱」，如「Telegram 111」。
+const PLATFORM_LABEL = { telegram: 'Telegram', x: 'X' }
+function platformLabel(p) { return PLATFORM_LABEL[p] || p || '' }
+
 const introText = computed(() =>
   card.value ? (variant.value === 'full' ? card.value.full_intro : card.value.short_intro) : ''
 )
 
+// 是否有尚未儲存的文字欄位變更（名字 / 完整介紹 / 簡短介紹）。
+const dirty = computed(() =>
+  !!card.value && !!saved.value && (
+    card.value.name !== saved.value.name ||
+    card.value.full_intro !== saved.value.full_intro ||
+    card.value.short_intro !== saved.value.short_intro
+  )
+)
+
+function snapshot() {
+  saved.value = {
+    name: card.value.name,
+    full_intro: card.value.full_intro,
+    short_intro: card.value.short_intro,
+  }
+}
+
 async function load() {
-  try { card.value = await api.getStoreCard(props.id) } catch (e) { error.value = e.message }
+  try {
+    card.value = await api.getStoreCard(props.id)
+    snapshot()
+  } catch (e) { error.value = e.message }
 }
 function goBack() { router.push({ name: 'store-list' }) }
 
-async function saveCard(fields) {
-  try { await api.updateStoreCard(props.id, fields) } catch (e) { error.value = e.message }
-}
-function saveName() {
-  const n = card.value.name.trim()
-  if (n) saveCard({ name: n })
+// 儲存：把目前文字欄位一次寫回後端。
+async function save() {
+  const name = card.value.name.trim()
+  if (!name) { error.value = '名字不可空白'; return }
+  try {
+    await api.updateStoreCard(props.id, {
+      name,
+      full_intro: card.value.full_intro,
+      short_intro: card.value.short_intro,
+    })
+    card.value.name = name
+    snapshot()
+    error.value = ''
+    savedMsg.value = '✓ 已儲存'
+    setTimeout(() => (savedMsg.value = ''), 2000)
+  } catch (e) { error.value = e.message }
 }
 
+// 取消：回到列表（若有未儲存變更，由路由守衛跳出確認）。
+function cancel() { goBack() }
+
 // --- 圖片 (S3) ---
+// 圖片為即時存檔；只刷新圖片欄位，保留尚未儲存的文字編輯。
+async function reloadImages() {
+  try {
+    const fresh = await api.getStoreCard(props.id)
+    card.value.images = fresh.images
+    card.value.cover_image = fresh.cover_image
+  } catch (e) { error.value = e.message }
+}
 async function onFiles(e) {
   for (const file of e.target.files) {
     try { await api.uploadStoreImage(props.id, file) } catch (err) { error.value = err.message }
   }
   e.target.value = ''
-  await load()
+  await reloadImages()
 }
 function onPaste(e) {
   const items = e.clipboardData?.items || []
@@ -49,7 +96,7 @@ function onPaste(e) {
     if (item.type.startsWith('image/')) {
       const reader = new FileReader()
       reader.onload = async () => {
-        try { await api.pasteStoreImage(props.id, reader.result); await load() }
+        try { await api.pasteStoreImage(props.id, reader.result); await reloadImages() }
         catch (err) { error.value = err.message }
       }
       reader.readAsDataURL(item.getAsFile())
@@ -59,21 +106,29 @@ function onPaste(e) {
   }
 }
 async function setCover(img) {
-  try { await api.setStoreCover(img.id); await load() } catch (e) { error.value = e.message }
+  try { await api.setStoreCover(img.id); await reloadImages() } catch (e) { error.value = e.message }
 }
 async function removeImage(img) {
   if (!confirm('刪除這張圖片？')) return
-  try { await api.deleteStoreImage(img.id); await load() } catch (e) { error.value = e.message }
+  try { await api.deleteStoreImage(img.id); await reloadImages() } catch (e) { error.value = e.message }
 }
 
 // --- 發布 (S5) ---
 async function openPublish() {
+  // 發布內容取自後端已儲存的資料；若有未儲存變更，先儲存再發布。
+  if (dirty.value) {
+    if (!confirm('發布前需先儲存目前的變更，要儲存並繼續嗎？')) return
+    await save()
+    if (dirty.value) return  // 儲存失敗（如名字空白）則中止
+  }
   showPublish.value = true
   copied.value = false
   sendMsg.value = ''
   try { targets.value = (await api.listTargets()).filter((t) => t.enabled) } catch (_) { /* 忽略 */ }
 }
 async function sendToTarget(t) {
+  // 發送前先確認，避免不小心點到就發出去。
+  if (!confirm(`確定要發布到「${platformLabel(t.platform)} ${t.name}」嗎？`)) return
   sendMsg.value = `發布到「${t.name}」中…`
   try {
     const { text } = await api.publishText(props.id, variant.value)
@@ -103,19 +158,38 @@ async function downloadImage() {
   } catch (e) { error.value = '產生圖片失敗：' + e.message }
 }
 
+// 路由切換離開（返回列表 / 取消 / 切換頁面）：有未儲存變更時跳確認。
+onBeforeRouteLeave(() => {
+  if (dirty.value) {
+    return window.confirm('尚未儲存變更，確定要離開嗎？未儲存的內容將會遺失。')
+  }
+  return true
+})
+
+// 瀏覽器關閉 / 重新整理：有未儲存變更時由瀏覽器跳原生確認。
+function onBeforeUnload(e) {
+  if (dirty.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+
 onMounted(() => {
   load()
   window.addEventListener('paste', onPaste)
+  window.addEventListener('beforeunload', onBeforeUnload)
 })
-onBeforeUnmount(() => window.removeEventListener('paste', onPaste))
+onBeforeUnmount(() => {
+  window.removeEventListener('paste', onPaste)
+  window.removeEventListener('beforeunload', onBeforeUnload)
+})
 </script>
 
 <template>
   <section v-if="card" class="detail">
     <div class="page-head">
       <button class="back" @click="goBack">← 返回列表</button>
-      <input class="title-input" v-model="card.name" @blur="saveName" />
-      <button class="primary publish-btn" @click="openPublish">📤 發布</button>
+      <input class="title-input" v-model="card.name" />
     </div>
     <p v-if="error" class="error">{{ error }}</p>
 
@@ -140,12 +214,23 @@ onBeforeUnmount(() => window.removeEventListener('paste', onPaste))
 
         <label class="field">
           <span>完整介紹</span>
-          <textarea v-model="card.full_intro" rows="4" @blur="saveCard({ full_intro: card.full_intro })"></textarea>
+          <textarea v-model="card.full_intro" rows="4"></textarea>
         </label>
         <label class="field">
           <span>簡短介紹</span>
-          <textarea v-model="card.short_intro" rows="2" @blur="saveCard({ short_intro: card.short_intro })"></textarea>
+          <textarea v-model="card.short_intro" rows="2"></textarea>
         </label>
+      </div>
+    </div>
+
+    <!-- 底部動作列：左下發布、右下取消／儲存 -->
+    <div class="action-bar">
+      <button class="primary publish-btn" @click="openPublish">📤 發布</button>
+      <div class="action-right">
+        <span v-if="savedMsg" class="saved-msg">{{ savedMsg }}</span>
+        <span v-else-if="dirty" class="dirty-msg">● 尚未儲存</span>
+        <button class="ghost" @click="cancel">取消</button>
+        <button class="primary" :disabled="!dirty" @click="save">💾 儲存</button>
       </div>
     </div>
 
@@ -189,7 +274,7 @@ onBeforeUnmount(() => window.removeEventListener('paste', onPaste))
 
         <div v-if="targets.length" class="auto-publish">
           <span class="ap-label">自動發布到：</span>
-          <button v-for="t in targets" :key="t.id" class="chip-btn" @click="sendToTarget(t)">📤 {{ t.name }}</button>
+          <button v-for="t in targets" :key="t.id" class="chip-btn" @click="sendToTarget(t)">📤 {{ platformLabel(t.platform) }} {{ t.name }}</button>
         </div>
         <p v-if="sendMsg" class="hint center">{{ sendMsg }}</p>
 
@@ -207,6 +292,12 @@ onBeforeUnmount(() => window.removeEventListener('paste', onPaste))
 .title-input { flex: 1; font-size: 1.4rem; font-weight: 700; border: 1px solid transparent; border-radius: 8px; padding: 4px 8px; }
 .title-input:hover, .title-input:focus { border-color: #cbd2d9; outline: none; }
 .publish-btn { white-space: nowrap; }
+.action-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
+.action-right { display: flex; align-items: center; gap: 10px; }
+.saved-msg { color: #2f855a; font-size: 0.85rem; }
+.dirty-msg { color: #b7791f; font-size: 0.85rem; }
+.action-bar button { padding: 8px 18px; border: none; border-radius: 8px; }
+.action-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
 .error { color: #cf1124; }
 .hint { color: #829ab1; font-size: 0.85rem; }
 .hint.center { text-align: center; }

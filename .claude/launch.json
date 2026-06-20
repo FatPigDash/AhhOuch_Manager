@@ -8,10 +8,10 @@
       "port": 8000
     },
     {
-      "name": "ahhouch-preview",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["preview_server.py"],
-      "port": 8030
+      "name": "ahhouch-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend/desktop", "run", "dev"],
+      "port": 5173
     }
   ]
 }

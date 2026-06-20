@@ -105,7 +105,12 @@ async function openPublish() {
     showPublish.value = true
   } catch (e) { error.value = e.message }
 }
+// 發布目標按鈕顯示「平台 名稱」，如「Telegram 111」。
+const PLATFORM_LABEL = { telegram: 'Telegram', x: 'X' }
+function platformLabel(p) { return PLATFORM_LABEL[p] || p || '' }
 async function sendToTarget(t) {
+  // 發送前先確認，避免不小心點到就發出去。
+  if (!confirm(`確定要發布到「${platformLabel(t.platform)} ${t.name}」嗎？`)) return
   sendMsg.value = `發布到「${t.name}」中…`
   try {
     await api.sendPublish(t.id, publishText.value)
@@ -244,7 +249,7 @@ onMounted(() => { load(); loadCards() })
 
         <div v-if="targets.length" class="auto-publish">
           <span class="ap-label">自動發布到：</span>
-          <button v-for="t in targets" :key="t.id" class="chip-btn" @click="sendToTarget(t)">📤 {{ t.name }}</button>
+          <button v-for="t in targets" :key="t.id" class="chip-btn" @click="sendToTarget(t)">📤 {{ platformLabel(t.platform) }} {{ t.name }}</button>
         </div>
         <p v-if="sendMsg" class="hint center">{{ sendMsg }}</p>
 

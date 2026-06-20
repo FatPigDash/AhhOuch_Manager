@@ -8,7 +8,8 @@
 > - [`AhhOuch 開發計畫.md`](./AhhOuch%20開發計畫.md) — 開發前的總體規劃與需求對照表（修訂歷程已移至本報告 §12）
 > - [`../CHANGELOG.md`](../CHANGELOG.md) — 版本修訂紀錄（依版次）
 >
-> 報告產生日期：2026-06-20 ｜ 對應版本：0.6.0 ｜ 狀態：**M0–M8 全部完成**
+> 報告產生日期：2026-06-20（最後更新：2026-06-21，§12 增列 11.14–11.17 店家模式調整）
+> ｜ 對應版本：0.6.0 ｜ 狀態：**M0–M8 全部完成**
 
 ---
 
@@ -64,9 +65,11 @@ AhhOuch_Edit/
 2. **路徑差異**由 `backend/config.py` 處理：
    - 唯讀資源（前端 dist、app.toml）：開發在專案內、凍結時在 `sys._MEIPASS`。
    - `DATA/`（可寫）：開發在專案根、凍結時在 exe 旁。
-3. **資料庫遷移**：SQLite 不會自動 `ALTER`，故 `database.py` 的 `_migrate()` 用
-   `_COLUMN_MIGRATIONS` 字典（PRAGMA 比對後 ADD COLUMN）。**新增 model 欄位時，
-   一定要在此登記**，既有使用者資料才不會在升級時壞掉。
+3. **資料庫遷移**：SQLite 不會自動 `ALTER`，故 `database.py` 的 `_migrate()` 處理兩類：
+   `_COLUMN_MIGRATIONS`（PRAGMA 比對後 **ADD COLUMN**）與 `_DROP_COLUMNS`（**DROP COLUMN**，
+   SQLite 3.35+）。**新增 model 欄位時，一定要在 `_COLUMN_MIGRATIONS` 登記；移除 model 欄位
+   時，要在 `_DROP_COLUMNS` 登記**（否則舊 DB 殘留的 NOT NULL 欄位會讓新版 INSERT 失敗），
+   既有使用者資料才不會在升級時壞掉。
 4. **封面圖**由各圖片表的 `is_cover` 計算，回應時組出 `cover_image`，卡片本身不存封面欄。
 5. **圖片**存 `DATA/images/`，DB 只存檔名；支援檔案上傳與剪貼簿 base64 貼上（PoC 6.1 已驗證）。
 6. **發布**：第一階段產生「排版圖片(html2canvas)＋純文字」供手動貼；第二階段 API 自動發布為骨架。
@@ -96,7 +99,7 @@ AhhOuch_Edit/
   ↳ 後續精修（已套用）：評分項目新增「**有/無**」型 §12 的 11.2、評分模板與心得/簡介改「**草稿＋儲存**」模式＋模板同步 §12 的 11.3/11.4、簡介圖片燈箱 §12 的 11.7、心得標題含「館名+卡名」§12 的 11.13。
 - **M4 店家：美容師資訊卡片**：資訊卡片 CRUD(名字自輸/多圖+封面/完整·簡短介紹)、
   發布 modal(完整/簡短 pill、預覽、複製文字、html2canvas 下載圖片) (S1–S5)。
-  ↳ 後續精修（已套用）：資訊卡片封面高度加倍 §12 的 11.5、圖片燈箱 §12 的 11.7。
+  ↳ 後續精修（已套用）：資訊卡片封面高度加倍 §12 的 11.5、圖片燈箱 §12 的 11.7、**資訊卡片預設排序改數字自然＋其餘 Unicode 且不提供手動排序** §12 的 11.14、**詳情頁改「草稿＋儲存/取消」並把發布鈕移左下** §12 的 11.15、移除已無用的 `StoreCard.position` 欄位 §12 的 11.16。
 - **M5 店家：班表**：多行標題、出勤人員點選、出勤時段(手動 1830→18:30／自動換算)、
   發布格式、草稿(S6–S12)。**發布輸出與需求 S11 範例字字相符**。
 - **M6 社群 API 串接（通用骨架）**：發布目標設定(平台/權杖/目標 ID)、一鍵發布，
@@ -138,8 +141,9 @@ AhhOuch_Edit/
 - git 已提交至 **V0.6.0**；**M7 響應式 CSS、CHANGELOG.md、frontend/mobile/README、
   本開發報告等尚未 commit**，可併入下一版。
 - 已知可清除遺留：`打包輸出/AhhOuch_v1.0.0.exe`（M0 測試時版次為 1.0.0 的舊產物）。
-- 開發驗證輔助：曾用臨時 `preview_server.py`(8030，獨立 `.preview_data`，已 gitignore)
-  做不干擾使用者 8000 的預覽，可刪。
+- 開發驗證輔助：曾用臨時 `preview_server.py`(8030) 做不干擾使用者 8000 的預覽；該檔已不存在，
+  `.claude/launch.json` 中指向它的 `ahhouch-preview` 壞設定已移除（§12 的 11.17），並改提供
+  `ahhouch-frontend`(Vite dev、5173) 供前端預覽。
 
 ## 9. 待辦／待確認（不阻擋現況）
 
@@ -177,7 +181,8 @@ python build.py
 > ③ **程式碼本身**（最終事實）。若文件與程式碼衝突，**以程式碼為準**，並回頭修正文件。
 
 1. 先讀本報告 §4（慣例）、§8（狀態）、§9（待辦），即可接手。
-2. 改後端資料模型欄位 → 記得同步更新 `database.py` 的 `_COLUMN_MIGRATIONS`。
+2. 改後端資料模型欄位 → 記得同步更新 `database.py`：新增欄位登記 `_COLUMN_MIGRATIONS`、
+   移除欄位登記 `_DROP_COLUMNS`。
 3. 改版次／名稱 → 只動 `app.toml`。
 4. 動到使用者需求行為前 → 對照 `AhhOuch 需求.md` 與計畫 §2 需求對照表，並把修訂歷程補在
    **本報告 §12** 或 `CHANGELOG.md`（開發計畫維持為開發前文件，不再追加歷程）。
@@ -196,8 +201,8 @@ python build.py
 > - 11.6 / 11.9 / 11.10 → M1（看板卡片顯示）
 > - 11.1 / 11.11 / 11.12 → M2（排序與拖曳）
 > - 11.2 / 11.3 / 11.4 / 11.7 / 11.13 → M3（卡片完整內容）
-> - 11.5 / 11.7 → M4（店家資訊卡片）
-> - 11.8 → 開發環境（Vite 代理、README）
+> - 11.5 / 11.7 / 11.14 / 11.15 / 11.16 → M4（店家資訊卡片）
+> - 11.8 / 11.17 → 開發環境（Vite 代理、README、預覽設定）
 >
 > 讀法：先看 §5 里程碑的「↳」指引找到對應條目，即可掌握該功能的**最新實際行為**。
 
@@ -327,3 +332,45 @@ python build.py
 
 - `backend/routers/customer.py`，`get_card`：取得所屬看板後，再多查一次 `Spa`，在回傳 dict 中新增 `spa_name` 欄位。
 - `frontend/desktop/src/views/CardDetailView.vue`，心得 panel 的 `<h2>`：原本 `'心得'` 改為 `` `${card.spa_name ?? ''} ${card.title ?? ''} 心得`.trim() ``；評分模板編輯模式下仍顯示「評分模板編輯」，不受影響。
+
+### 2026-06-21 — 店家模式 UX 與資料模型調整（M4 範圍精修）
+
+本批調整集中於**店家端美容師資訊卡片**的排序、詳情頁編輯體驗與相關資料模型清理，未變更整體里程碑規劃。
+
+#### 11.14 美容師資訊卡片預設排序改為「數字自然＋其餘 Unicode」，不提供手動排序（店家 StoreCardListView）
+
+**需求**：資訊卡片頁面所有美容師卡片一律**預設排序、不提供手動排序**；名字會有純數字、`#`純數字、中文、英文、日文等型態。
+
+**規則**：
+- 純數字 / `#`純數字 → **數值（自然）排序**（`#5 < #21 < #61 < #199`），全形數字（如 `１２`）亦當數值。
+- 中文 / 英文 / 日文 → **標準 Unicode（碼點）排序**。
+
+**修改內容**（`backend/routers/store.py`，`list_cards`）：
+- 原 `order_by(StoreCard.position)`（建立順序）改為以 Python `_name_sort_key(name)` 排序。
+- `_name_sort_key`：以 `re.split(r"(\d+)", name)` 拆成數字段／非數字段交錯；數字段轉 `int` 比數值、非數字段比碼點，元素統一為 `(型別旗標, 數值, 字串)` 避免 `int`／`str` 直接比較出錯。
+- 以 Python 排序而非 SQL `order_by`，確保結果不受 SQLite collation 影響。
+- 前端 `StoreCardListView.vue` 本就無手動排序 UI，故「不提供手動排序」無需改動介面。
+- 與客人端 §11.11 的 Natural Sort 同源，店家端額外把 `#` 前綴數字也納入數值排序。
+
+#### 11.15 店家資訊卡片詳情頁改「草稿＋儲存／取消」並調整按鈕版面（店家 StoreCardDetailView）
+
+**版面**：
+- 「📤 發布」由右上角移至**左下角**。
+- 右下角新增 **[取消]** 與 **[💾 儲存]**，旁顯示狀態（`● 尚未儲存` ／ `✓ 已儲存`）。
+
+**編輯模式**：
+- 名字／完整介紹／簡短介紹由原「失焦即自動存（`@blur`）」改為**本地草稿＋按 [儲存] 才寫回後端**；「儲存」在無變更時禁用、名字空白會擋下並提示。
+- **未儲存就離開的確認**：返回列表／取消／路由切換由 `onBeforeRouteLeave` 跳確認；瀏覽器關閉／重新整理由 `beforeunload` 跳原生確認。
+- 圖片維持即時存檔，並改用只刷新圖片欄位的 `reloadImages()`，避免重載覆蓋尚未儲存的文字編輯。
+- 按「發布」時若有未儲存變更，先提示並儲存再發布（發布內容取自後端已存資料）。
+- 與客人端 §11.4 的「草稿＋儲存」模式一致化。
+
+#### 11.16 移除 `StoreCard.position` 欄位（資料模型清理）
+
+- 因 §11.14 改為依名字計算排序，`StoreCard.position` 已不再使用 → 從 `backend/models/store.py` 移除，`create_card` 不再寫入。
+- `StoreCardImage.position`（圖片排序）保留。
+- **遷移**：`backend/database.py` 新增 `_DROP_COLUMNS`，啟動時對既有 DB 執行 `ALTER TABLE storecard DROP COLUMN position`（SQLite 3.35+ 支援）。此步**必要**——否則舊 DB 殘留的 NOT NULL `position` 欄位會讓新版不帶該欄位的 INSERT 失敗。
+
+#### 11.17 移除壞掉的 launch.json 預覽設定
+
+- `.claude/launch.json` 移除指向不存在的 `preview_server.py` 之 `ahhouch-preview`（8030）設定；新增可用的 `ahhouch-frontend`（Vite dev、5173，`/api`・`/images` 代理到 8000 後端）以供前端預覽。

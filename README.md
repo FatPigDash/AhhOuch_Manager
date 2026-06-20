@@ -19,6 +19,9 @@
 
   ```bat
   pip install -r requirements.txt
+
+  或是指令
+  python -m pip install -r requirements.txt
   ```
 
 **前端套件**

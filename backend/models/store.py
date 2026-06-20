@@ -13,8 +13,8 @@ class StoreCard(SQLModel, table=True):
     name: str
     full_intro: str = ""   # 完整介紹 (S4)
     short_intro: str = ""  # 簡短介紹 (S4)
-    position: int = 0
     created_at: datetime = Field(default_factory=datetime.now)
+    # 排序固定為名字（數字自然 + 其餘 Unicode），不再保存手動排序位置。
 
 
 class StoreCardImage(SQLModel, table=True):

@@ -6,10 +6,15 @@ import StoreNav from '../components/StoreNav.vue'
 const targets = ref([])
 const platforms = ref([])
 const error = ref('')
-const form = reactive({ name: '', platform: 'line', token: '', target_id: '' })
+const showTokenHelp = ref(false) // 機器人金鑰（bot token）申請教學彈窗
+const showChatIdHelp = ref(false) // 群組編號（chat_id）取得教學彈窗
+const form = reactive({ name: '', platform: 'telegram', token: '', target_id: '' })
 const edit = reactive({}) // { [id]: {token, target_id, ...} 暫存編輯 }
 
-const PLATFORM_LABEL = { line: 'LINE', telegram: 'Telegram' }
+const PLATFORM_LABEL = { telegram: 'Telegram', x: 'X' }
+// 群組編號欄位提示；X 自動發送尚未支援，不會用到。
+const ID_PLACEHOLDER = { telegram: '例如：-1001234567890', x: '（X 暫不支援自動發送）' }
+function idPlaceholder(p) { return ID_PLACEHOLDER[p] || '目標 ID' }
 
 async function load() {
   try {
@@ -53,21 +58,41 @@ onMounted(load)
     <h1>發布設定</h1>
     <p v-if="error" class="error">{{ error }}</p>
     <p class="hint">
-      設定一鍵自動發布的去處（平台＋權杖＋目標 ID）。設定後可在卡片／班表的「發布」視窗直接送出文字。
-      權杖需自行向平台申請；目前支援 {{ platforms.map(label).join('、') }}。
+      設定好之後，就能在卡片／班表的「發布」視窗，一鍵把內容送到指定的群組。
+      下方每個欄位都有說明，照著填即可。目前可自動發送：Telegram（X 需手動複製貼上）。
     </p>
 
     <div class="panel add">
       <h2>新增發布目標</h2>
       <div class="grid">
-        <label>名稱<input v-model="form.name" placeholder="如：工作室 LINE 群" /></label>
-        <label>平台
+        <label>
+          <span class="ttl">名稱</span>
+          <span class="desc">自己看的備註，方便辨認，例如「工作室主群」</span>
+          <input v-model="form.name" placeholder="例如：工作室主群" />
+        </label>
+        <label>
+          <span class="ttl">發送到哪個平台</span>
+          <span class="desc">訊息要透過哪個 App 發出</span>
           <select v-model="form.platform">
             <option v-for="p in platforms" :key="p" :value="p">{{ label(p) }}</option>
           </select>
         </label>
-        <label>權杖 (token)<input v-model="form.token" type="password" placeholder="channel / bot token" /></label>
-        <label>目標 ID<input v-model="form.target_id" :placeholder="form.platform === 'line' ? 'LINE groupId' : 'chat_id'" /></label>
+        <label>
+          <span class="ttl-row">
+            <span class="ttl">機器人金鑰</span>
+            <button type="button" class="help-btn" title="如何申請機器人與取得金鑰？" @click="showTokenHelp = true">?</button>
+          </span>
+          <span class="desc">向 Telegram 的 @BotFather 申請的一串密碼，讓系統能用機器人發訊息</span>
+          <input v-model="form.token" type="password" placeholder="貼上申請到的金鑰" />
+        </label>
+        <label>
+          <span class="ttl-row">
+            <span class="ttl">要發到哪個群組</span>
+            <button type="button" class="help-btn" title="如何取得群組編號？" @click="showChatIdHelp = true">?</button>
+          </span>
+          <span class="desc">群組的編號（Telegram 稱為 chat_id），訊息會送到這個群組</span>
+          <input v-model="form.target_id" :placeholder="idPlaceholder(form.platform)" />
+        </label>
       </div>
       <button class="primary" @click="addTarget">＋ 新增</button>
     </div>
@@ -77,14 +102,14 @@ onMounted(load)
       <li v-for="t in targets" :key="t.id" class="row">
         <template v-if="edit[t.id]">
           <div class="grid">
-            <label>名稱<input v-model="edit[t.id].name" /></label>
-            <label>平台
+            <label><span class="ttl">名稱</span><input v-model="edit[t.id].name" /></label>
+            <label><span class="ttl">發送到哪個平台</span>
               <select v-model="edit[t.id].platform">
                 <option v-for="p in platforms" :key="p" :value="p">{{ label(p) }}</option>
               </select>
             </label>
-            <label>權杖（留空＝不更動）<input v-model="edit[t.id].token" type="password" :placeholder="t.token_set ? '已設定 ' + t.token_hint : '未設定'" /></label>
-            <label>目標 ID<input v-model="edit[t.id].target_id" /></label>
+            <label><span class="ttl">機器人金鑰（留空＝不更動）</span><input v-model="edit[t.id].token" type="password" :placeholder="t.token_set ? '已設定 ' + t.token_hint : '未設定'" /></label>
+            <label><span class="ttl">要發到哪個群組</span><input v-model="edit[t.id].target_id" :placeholder="idPlaceholder(edit[t.id].platform)" /></label>
           </div>
           <div class="actions">
             <button class="primary" @click="saveEdit(t)">儲存</button>
@@ -99,7 +124,7 @@ onMounted(load)
               <span class="badge" :class="t.enabled ? 'on' : 'off'">{{ t.enabled ? '啟用' : '停用' }}</span>
             </div>
             <div class="meta">
-              權杖：{{ t.token_set ? '已設定 ' + t.token_hint : '未設定' }} ｜ 目標：{{ t.target_id || '未設定' }}
+              金鑰：{{ t.token_set ? '已設定 ' + t.token_hint : '未設定' }} ｜ 群組：{{ t.target_id || '未設定' }}
             </div>
           </div>
           <div class="actions">
@@ -110,6 +135,44 @@ onMounted(load)
         </template>
       </li>
     </ul>
+
+    <!-- 機器人金鑰（bot token）申請教學；點視窗外自動關閉 -->
+    <div v-if="showTokenHelp" class="modal-backdrop" @click.self="showTokenHelp = false">
+      <div class="modal">
+        <header class="modal-head">
+          <h2>怎麼申請機器人並取得金鑰？</h2>
+          <button type="button" class="x" @click="showTokenHelp = false">✕</button>
+        </header>
+        <ol class="steps">
+          <li>在 Telegram 搜尋並開啟官方的 <b>@BotFather</b>（有藍色認證勾勾）。</li>
+          <li>對它輸入指令 <code>/newbot</code>，按它的指示操作。</li>
+          <li>先取一個<b>機器人名稱</b>（顯示用，可中文）。</li>
+          <li>再取一個<b>使用者名稱</b>，<b>必須以 <code>bot</code> 結尾</b>（例如 <code>myshop_bot</code>），且不能重複。</li>
+          <li>完成後 BotFather 會回一段訊息，裡面的 <b>HTTP API token</b> 就是金鑰，格式像 <code>123456789:AAE…</code>，把它整串複製貼回上面欄位。</li>
+        </ol>
+        <p class="note">小提醒：金鑰等於機器人的密碼，請勿外流。若不慎外洩，可在 BotFather 用 <code>/revoke</code> 重新產生一組新金鑰。</p>
+      </div>
+    </div>
+
+    <!-- 群組編號（chat_id）取得教學；點視窗外自動關閉 -->
+    <div v-if="showChatIdHelp" class="modal-backdrop" @click.self="showChatIdHelp = false">
+      <div class="modal">
+        <header class="modal-head">
+          <h2>怎麼取得群組編號（chat_id）？</h2>
+          <button type="button" class="x" @click="showChatIdHelp = false">✕</button>
+        </header>
+        <ol class="steps">
+          <li>先到 Telegram 用 <b>@BotFather</b> 建立一個機器人，並複製它給你的「機器人金鑰」。</li>
+          <li>把這個機器人<b>加入你要發送的群組</b>。</li>
+          <li>在群組裡<b>隨便發一則訊息</b>（讓機器人收得到）。</li>
+          <li>用瀏覽器打開這個網址（把 <code>金鑰</code> 換成你的機器人金鑰）：
+            <code class="url">https://api.telegram.org/bot金鑰/getUpdates</code>
+          </li>
+          <li>在跳出的內容裡找到 <code>"chat":{"id":-100…}</code>，那個 <b>id</b> 就是群組編號，貼回上面欄位即可。</li>
+        </ol>
+        <p class="note">小提醒：群組編號通常是<b>負數</b>。若網址打開後沒看到資料，先回群組再發一則訊息，然後重新整理網址。</p>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -122,6 +185,11 @@ h2 { margin: 0 0 12px; font-size: 1.05rem; }
 .panel { background: #fff; border: 1px solid #e4e7eb; border-radius: 12px; padding: 16px 18px; margin: 14px 0; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 .grid label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: #486581; }
+.grid .ttl { font-weight: 600; color: #334e68; }
+.grid .ttl-row { display: flex; align-items: center; gap: 6px; }
+.help-btn { width: 18px; height: 18px; flex: none; padding: 0; border: none; border-radius: 50%; background: #2680c2; color: #fff; font-size: 0.72rem; font-weight: 700; line-height: 18px; text-align: center; cursor: pointer; }
+.help-btn:hover { background: #186faf; }
+.grid .desc { font-size: 0.75rem; font-weight: 400; color: #829ab1; line-height: 1.4; }
 .grid input, .grid select { padding: 7px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.95rem; }
 .list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .row { background: #fff; border: 1px solid #e4e7eb; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -136,6 +204,17 @@ h2 { margin: 0 0 12px; font-size: 1.05rem; }
 .primary { background: #2680c2; color: #fff; border: none; border-radius: 8px; padding: 7px 14px; }
 .ghost { background: #e4e7eb; color: #334e68; }
 .danger { background: #fbeae5; color: #cf1124; }
+
+.modal-backdrop { position: fixed; inset: 0; background: rgba(16,42,67,0.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+.modal { background: #fff; border-radius: 14px; width: 460px; max-width: 92vw; max-height: 90vh; overflow-y: auto; padding: 18px 20px; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.modal-head h2 { margin: 0; font-size: 1.1rem; }
+.modal-head .x { border: none; background: #e4e7eb; border-radius: 8px; width: 30px; height: 30px; cursor: pointer; }
+.steps { margin: 0; padding-left: 1.2em; color: #334e68; font-size: 0.9rem; line-height: 1.7; }
+.steps li { margin-bottom: 8px; }
+.steps code { background: #f0f4f8; border-radius: 4px; padding: 1px 5px; font-size: 0.85rem; color: #0a558c; }
+.steps code.url { display: block; margin-top: 4px; word-break: break-all; }
+.note { margin: 12px 0 0; padding: 10px 12px; background: #fff8e6; border-radius: 8px; color: #8a6d3b; font-size: 0.85rem; line-height: 1.6; }
 
 @media (max-width: 640px) {
   .grid { grid-template-columns: 1fr; }  /* 手機：表單改單欄 */

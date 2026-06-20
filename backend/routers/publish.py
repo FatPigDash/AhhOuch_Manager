@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/publish", tags=["publish"])
 
 class TargetCreate(BaseModel):
     name: str
-    platform: str = ""
+    platform: str = "telegram"
     token: str = ""
     target_id: str = ""
     enabled: bool = True
