@@ -476,9 +476,10 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 .card {
-  background: #fff;
+  background: #fffbf0;
   border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  border: 2px solid #d4a84b;
+  box-shadow: none;
   overflow: hidden;
   cursor: grab;
   position: relative;
@@ -497,7 +498,7 @@ onBeforeUnmount(() => {
   visibility: hidden;
 }
 .cover {
-  background: #f0f4f8;
+  background: #fdf3dc;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -518,8 +519,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   padding: 8px 10px;
-  background: #f0f4f8;
-  border-bottom: 1px solid #dde4ea;
+  background: #fffbf0;
+  border-bottom: 1px solid #e8c97a;
   min-height: 38px;
 }
 .card-title {
