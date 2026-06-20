@@ -445,7 +445,7 @@ onBeforeUnmount(() => {
     <!-- 心得 / 模板編輯 (C16–C22) -->
     <div class="panel">
       <header class="panel-head">
-        <h2>{{ showTemplates ? '評分模板編輯' : '心得' }}</h2>
+        <h2>{{ showTemplates ? '評分模板編輯' : `${card.spa_name ?? ''} ${card.title ?? ''} 心得`.trim() }}</h2>
         <div class="head-actions">
           <template v-if="!showTemplates">
             <span v-if="reviewsDirty" class="editing-tag">● 尚未儲存</span>

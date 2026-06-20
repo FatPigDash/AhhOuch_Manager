@@ -490,9 +490,11 @@ def get_card(card_id: int, session: Session = Depends(get_session)) -> dict:
     ).all()
     review_list = [_serialize_review(session, r) for r in reviews]
     board = session.get(Board, card.board_id)
+    spa = session.get(Spa, board.spa_id) if board else None
     return {
         **card.model_dump(),
         "spa_id": board.spa_id if board else None,  # 供前端返回養身館頁
+        "spa_name": spa.name if spa else None,
         "cover_image": _cover_url(session, card_id),
         "images": image_list,
         "reviews": review_list,
