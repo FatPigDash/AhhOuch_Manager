@@ -680,4 +680,13 @@ button.danger.small, button.danger { font-size: 0.85rem; }
 .lightbox-box img { display: block; max-width: 90vw; max-height: 90vh; border-radius: 8px; object-fit: contain; }
 .lightbox-close { position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 50%; border: none; background: #fff; color: #334e68; font-size: 1rem; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 1; }
 .lightbox-close:hover { background: #cf1124; color: #fff; }
+
+@media (max-width: 640px) {
+  .detail { max-width: 100%; }
+  /* 評分列在窄螢幕換行：名稱+滑桿一行，補充說明獨立一行 */
+  .score-row { flex-wrap: wrap; }
+  .score-slider { flex: 1; width: auto; min-width: 120px; }
+  .yn-btns { width: auto; }
+  .score-note { flex-basis: 100%; }
+}
 </style>

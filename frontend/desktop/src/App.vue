@@ -33,7 +33,9 @@ onMounted(async () => {
 .app-header {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 12px;
   padding: 14px 24px;
   background: #102a43;
   color: #fff;
@@ -56,5 +58,10 @@ onMounted(async () => {
 .role.active { background: #2680c2; color: #fff; font-weight: 600; }
 .app-main {
   padding: 24px;
+}
+@media (max-width: 640px) {
+  .app-header { padding: 10px 14px; }
+  .brand { font-size: 1.1rem; }
+  .app-main { padding: 14px; }
 }
 </style>

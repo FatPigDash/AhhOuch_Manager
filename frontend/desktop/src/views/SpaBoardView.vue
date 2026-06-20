@@ -89,6 +89,8 @@ let panStartScroll = 0;
 
 function onPanStart(e) {
   if (e.button !== 0 || !boardRow.value) return;
+  // 觸控裝置交給瀏覽器原生水平捲動，避免與自訂拖曳捲動衝突（手機版）
+  if (e.pointerType === "touch") return;
   // 只在空白區域啟動：避開卡片、看板把手、輸入框與按鈕，以免干擾原有操作
   if (
     e.target.closest(
@@ -574,5 +576,12 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   background: #2680c2;
   color: #fff;
+}
+
+@media (max-width: 640px) {
+  /* 手機：看板略窄、利用螢幕高度、原生橫向捲動 */
+  .board { flex: 0 0 78vw; max-width: 300px; max-height: none; }
+  .board-row { cursor: default; -webkit-overflow-scrolling: touch; }
+  .page-head h1 { font-size: 1.2rem; }
 }
 </style>

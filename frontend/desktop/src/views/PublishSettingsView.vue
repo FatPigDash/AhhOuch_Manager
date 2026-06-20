@@ -136,4 +136,8 @@ h2 { margin: 0 0 12px; font-size: 1.05rem; }
 .primary { background: #2680c2; color: #fff; border: none; border-radius: 8px; padding: 7px 14px; }
 .ghost { background: #e4e7eb; color: #334e68; }
 .danger { background: #fbeae5; color: #cf1124; }
+
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; }  /* 手機：表單改單欄 */
+}
 </style>
