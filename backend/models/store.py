@@ -13,6 +13,9 @@ class StoreCard(SQLModel, table=True):
     name: str
     full_intro: str = ""   # 完整介紹 (S4)
     short_intro: str = ""  # 簡短介紹 (S4)
+    # 該美容師資訊最近一次自動發布到 Telegram 的訊息連結；
+    # 發布班表時，把名字做成連到這則訊息的超連結。自動發布會覆寫，使用者亦可手動修改。
+    info_link: str = ""
     created_at: datetime = Field(default_factory=datetime.now)
     # 排序固定為名字（數字自然 + 其餘 Unicode），不再保存手動排序位置。
 

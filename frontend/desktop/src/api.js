@@ -122,6 +122,8 @@ export const api = {
   deleteStoreImage: (imageId) => request('DELETE', `/api/store/images/${imageId}`),
   publishText: (cardId, variant) =>
     request('GET', `/api/store/cards/${cardId}/publish-text?variant=${variant}`),
+  // 自動發布卡片（含勾選的圖片 + 文字）到指定發布目標
+  publishCard: (cardId, data) => request('POST', `/api/store/cards/${cardId}/publish`, data),
 
   // ===== 店家：班表 (S6–S12) =====
   listSchedules: () => request('GET', '/api/store/schedules'),
@@ -135,6 +137,8 @@ export const api = {
   deleteEntry: (entryId) => request('DELETE', `/api/store/entries/${entryId}`),
   shiftSlots: (start) => request('GET', `/api/store/shift-slots?start=${encodeURIComponent(start)}`),
   schedulePublishText: (id) => request('GET', `/api/store/schedules/${id}/publish-text`),
+  // 自動發布班表（HTML，名字自動連到該美容師資訊訊息）
+  publishSchedule: (id, data) => request('POST', `/api/store/schedules/${id}/publish`, data),
 
   // ===== 社群發布 (P1) =====
   publishPlatforms: () => request('GET', '/api/publish/platforms'),

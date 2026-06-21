@@ -126,7 +126,8 @@ async function sendToTarget(t) {
   if (!confirm(`確定要發布到「${platformLabel(t.platform)} ${t.name}」嗎？`)) return
   sendMsg.value = `發布到「${t.name}」中…`
   try {
-    await api.sendPublish(t.id, publishText.value)
+    // 走 HTML 發布端點：已發布過資訊的美容師，名字會自動加上超連結。
+    await api.publishSchedule(props.id, { target_id: t.id })
     sendMsg.value = `✓ 已發布到「${t.name}」`
   } catch (e) { sendMsg.value = `✗ ${e.message}` }
 }
@@ -264,6 +265,7 @@ onMounted(() => { load(); loadCards() })
           <span class="ap-label">自動發布到：</span>
           <button v-for="t in targets" :key="t.id" class="chip-btn" @click="sendToTarget(t)">📤 {{ platformLabel(t.platform) }} {{ t.name }}</button>
         </div>
+        <p v-if="targets.length" class="hint center">自動發布時，曾發布過資訊的美容師名字會自動連到該則資訊訊息（僅自動發布有效）。</p>
         <p v-if="sendMsg" class="hint center">{{ sendMsg }}</p>
 
         <p class="hint center">產生後手動貼到群組；草稿已自動保存，可再次編輯發布。</p>

@@ -48,6 +48,16 @@ def delete_image_file(filename: str) -> None:
         path.unlink()
 
 
+def image_path(filename: str):
+    """圖片在磁碟上的完整路徑。"""
+    return config.IMAGES_DIR / filename
+
+
+def read_image_bytes(filename: str) -> bytes:
+    """讀取圖片原始位元組（供自動發布上傳用）。"""
+    return image_path(filename).read_bytes()
+
+
 def image_url(filename: str) -> str:
     """前端可存取的 URL（由 main.py 將 DATA/images 掛載於 /images）。"""
     return f"/images/{filename}"
