@@ -12,6 +12,7 @@ from .schedule import Schedule, ScheduleEntry
 from .spa import Spa
 from .store import StoreCard, StoreCardImage
 from .template import RatingTemplate, RatingTemplateItem
+from .text_template import TextTemplate
 
 __all__ = [
     "Spa",
@@ -26,5 +27,6 @@ __all__ = [
     "StoreCardImage",
     "Schedule",
     "ScheduleEntry",
+    "TextTemplate",
     "PublishTarget",
 ]

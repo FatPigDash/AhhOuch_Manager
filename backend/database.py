@@ -38,6 +38,7 @@ _COLUMN_MIGRATIONS: dict[str, dict[str, str]] = {
     },
     "schedule": {
         "date": "TEXT DEFAULT ''",  # 班表日期（ISO YYYY-MM-DD）
+        "footer": "TEXT DEFAULT ''",  # 結語（發布時置於最下方）
     },
 }
 

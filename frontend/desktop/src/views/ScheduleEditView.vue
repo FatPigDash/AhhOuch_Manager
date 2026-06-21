@@ -3,6 +3,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import html2canvas from 'html2canvas'
 import { api } from '../api'
+import TextTemplateBar from '../components/TextTemplateBar.vue'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
 const router = useRouter()
@@ -48,6 +49,21 @@ function goBack() { router.push({ name: 'schedule-list' }) }
 // 標題 (S6)
 function saveTitle() {
   api.updateSchedule(props.id, { title: schedule.value.title }).catch((e) => (error.value = e.message))
+}
+
+// 結語：發布時置於最下方，編輯方式與標題相同
+function saveFooter() {
+  api.updateSchedule(props.id, { footer: schedule.value.footer }).catch((e) => (error.value = e.message))
+}
+
+// 套用文字模板：以模板內容覆蓋欄位並立即存檔。
+function applyTitleTemplate(content) {
+  schedule.value.title = content
+  saveTitle()
+}
+function applyFooterTemplate(content) {
+  schedule.value.footer = content
+  saveFooter()
 }
 
 // 日期：用原生小日曆挑選，存 ISO（YYYY-MM-DD）；顯示/發布格式為 2026/06/21 (日)。
@@ -194,6 +210,7 @@ onMounted(() => { load(); loadCards() })
     <div class="panel">
       <label class="field">
         <span>標題（可多行）</span>
+        <TextTemplateBar kind="title" :current-text="schedule.title" @apply="applyTitleTemplate" />
         <textarea v-model="schedule.title" rows="3" @blur="saveTitle" placeholder="例：今日班表 / 歡迎預約"></textarea>
       </label>
     </div>
@@ -270,6 +287,15 @@ onMounted(() => { load(); loadCards() })
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- 結語：發布時置於最下方 -->
+    <div class="panel">
+      <label class="field">
+        <span>結語（可多行）</span>
+        <TextTemplateBar kind="footer" :current-text="schedule.footer" @apply="applyFooterTemplate" />
+        <textarea v-model="schedule.footer" rows="3" @blur="saveFooter" placeholder="例：歡迎來電預約 / 感謝您的支持"></textarea>
+      </label>
     </div>
 
     <!-- 發布視窗 (S11) -->

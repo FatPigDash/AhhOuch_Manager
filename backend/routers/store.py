@@ -23,6 +23,7 @@ from ..models import (
     ScheduleEntry,
     StoreCard,
     StoreCardImage,
+    TextTemplate,
 )
 from ..services import image_service, publish_service, shift_calculator
 from ..services.time_utils import normalize_time
@@ -60,6 +61,7 @@ class ScheduleCreate(BaseModel):
 
 class ScheduleUpdate(BaseModel):
     title: str | None = None
+    footer: str | None = None  # 結語，發布時置於最下方
     date: str | None = None  # ISO "YYYY-MM-DD"，空字串＝清除日期
 
 
@@ -436,6 +438,8 @@ def update_schedule(
     schedule = _get_or_404(session, Schedule, schedule_id, "班表")
     if data.title is not None:
         schedule.title = data.title
+    if data.footer is not None:
+        schedule.footer = data.footer
     if data.date is not None:
         schedule.date = data.date.strip()
     schedule.updated_at = datetime.now()
@@ -548,6 +552,8 @@ def schedule_publish_text(
         if slots:
             lines.append("、".join(slots))
         blocks.append("\n".join(lines))
+    if schedule.footer.strip():
+        blocks.append(schedule.footer.strip())
     return {"text": "\n\n".join(blocks)}
 
 
@@ -590,6 +596,8 @@ def _schedule_html(session: Session, schedule: Schedule) -> str:
         if slots:
             lines.append(html.escape("、".join(slots)))
         blocks.append("\n".join(lines))
+    if schedule.footer.strip():
+        blocks.append(html.escape(schedule.footer.strip()))
     return "\n\n".join(blocks)
 
 
@@ -611,3 +619,87 @@ def publish_schedule(
     if not ok:
         raise HTTPException(status_code=502, detail=f"發布失敗：{message}")
     return {"ok": True, "message": message}
+
+
+# --------------------------------------------------------------------------
+# 標題／結語文字模板（可儲存、選用、編輯）
+# --------------------------------------------------------------------------
+_TEMPLATE_KINDS = {"title", "footer"}
+
+
+class TextTemplateCreate(BaseModel):
+    kind: str  # "title" | "footer"
+    name: str
+    content: str = ""
+
+
+class TextTemplateUpdate(BaseModel):
+    name: str | None = None
+    content: str | None = None
+
+
+@router.get("/text-templates")
+def list_text_templates(
+    kind: str, session: Session = Depends(get_session)
+) -> list[dict]:
+    """列出某類別（title/footer）的所有文字模板，依 position、id 排序。"""
+    if kind not in _TEMPLATE_KINDS:
+        raise HTTPException(status_code=422, detail="未知的模板類別")
+    rows = session.exec(
+        select(TextTemplate)
+        .where(TextTemplate.kind == kind)
+        .order_by(TextTemplate.position, TextTemplate.id)
+    ).all()
+    return [t.model_dump() for t in rows]
+
+
+@router.post("/text-templates", status_code=201)
+def create_text_template(
+    data: TextTemplateCreate, session: Session = Depends(get_session)
+) -> dict:
+    if data.kind not in _TEMPLATE_KINDS:
+        raise HTTPException(status_code=422, detail="未知的模板類別")
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="模板名稱不可空白")
+    # 新模板排在同類別最後
+    last = session.exec(
+        select(TextTemplate)
+        .where(TextTemplate.kind == data.kind)
+        .order_by(TextTemplate.position.desc())
+    ).first()
+    position = (last.position + 1) if last else 0
+    tpl = TextTemplate(
+        kind=data.kind, name=name, content=data.content, position=position
+    )
+    session.add(tpl)
+    session.commit()
+    session.refresh(tpl)
+    return tpl.model_dump()
+
+
+@router.patch("/text-templates/{template_id}")
+def update_text_template(
+    template_id: int, data: TextTemplateUpdate, session: Session = Depends(get_session)
+) -> dict:
+    tpl = _get_or_404(session, TextTemplate, template_id, "文字模板")
+    if data.name is not None:
+        name = data.name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="模板名稱不可空白")
+        tpl.name = name
+    if data.content is not None:
+        tpl.content = data.content
+    session.add(tpl)
+    session.commit()
+    session.refresh(tpl)
+    return tpl.model_dump()
+
+
+@router.delete("/text-templates/{template_id}", status_code=204)
+def delete_text_template(
+    template_id: int, session: Session = Depends(get_session)
+) -> None:
+    tpl = _get_or_404(session, TextTemplate, template_id, "文字模板")
+    session.delete(tpl)
+    session.commit()

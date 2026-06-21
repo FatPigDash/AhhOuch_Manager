@@ -8,8 +8,8 @@
 > - [`AhhOuch 開發計畫.md`](./AhhOuch%20開發計畫.md) — 開發前的總體規劃與需求對照表（修訂歷程已移至本報告 §12）
 > - [`../CHANGELOG.md`](../CHANGELOG.md) — 版本修訂紀錄（依版次）
 >
-> 報告產生日期：2026-06-20（最後更新：2026-06-21，§12 增列 11.26–11.28：卡片自動發布複選內容、班表名字超連結、班表日期欄位）
-> ｜ 對應版本：1.4.0（自 §5 的 0.6.0 後持續精修發版，使用者以 `app.toml` 控版次） ｜ 狀態：**M0–M8 全部完成，並持續精修**
+> 報告產生日期：2026-06-20（最後更新：2026-06-21，§12 增列 11.29–11.30：班表結語欄位、標題/結語文字模板）
+> ｜ 對應版本：1.5.0（自 §5 的 0.6.0 後持續精修發版，使用者以 `app.toml` 控版次） ｜ 狀態：**M0–M8 全部完成，並持續精修**
 
 ---
 
@@ -44,7 +44,7 @@ AhhOuch_Edit/
 │  ├─ version.py         讀 app.toml（唯一取值來源）
 │  ├─ config.py          路徑（開發 vs 凍結 exe 差異）、預設看板/評分項目
 │  ├─ database.py        SQLite 引擎、init_db、_migrate(補欄位)、_cleanup_legacy_data(清遺留)、_seed_defaults
-│  ├─ models/            spa board card image review template store schedule publish
+│  ├─ models/            spa board card image review template text_template store schedule publish
 │  ├─ routers/           customer.py(客人) store.py(店家+班表) publish.py(社群發布)
 │  └─ services/          image_service shift_calculator time_utils publish_service
 ├─ frontend/
@@ -52,7 +52,8 @@ AhhOuch_Edit/
 │  │  ├─ views/          SpaListView SpaBoardView CardDetailView
 │  │  │                  StoreCardListView StoreCardDetailView
 │  │  │                  ScheduleListView ScheduleEditView PublishSettingsView
-│  │  ├─ components/StoreNav.vue   api.js  router.js  App.vue  style.css
+│  │  ├─ components/      StoreNav.vue  TextTemplateBar.vue（標題/結語模板列）
+│  │  ├─ api.js  router.js  App.vue  style.css
 │  └─ mobile/            （保留作未來擴充；手機目前用響應式，非獨立 app）
 ├─ DATA/                 ahhouch.db + images/（gitignore；啟動自動建立）
 └─ 打包輸出/             AhhOuch_v<版次>.exe（gitignore）
@@ -104,7 +105,7 @@ AhhOuch_Edit/
   ↳ 後續精修（已套用）：資訊卡片封面高度加倍 §12 的 11.5、圖片燈箱 §12 的 11.7、**資訊卡片預設排序改數字自然＋其餘 Unicode 且不提供手動排序** §12 的 11.14、**詳情頁改「草稿＋儲存/取消」並把發布鈕移左下** §12 的 11.15、移除已無用的 `StoreCard.position` 欄位 §12 的 11.16、**自動發布改「複選內容（圖片/完整/簡短）＋挑圖＋預覽」流程，Telegram 支援發圖** §12 的 11.26、**卡片自動發布時擷取「資訊訊息連結」供班表名字超連結用** §12 的 11.27。
 - **M5 店家：班表**：多行標題、出勤人員點選、出勤時段(手動 1830→18:30／自動換算)、
   發布格式、草稿(S6–S12)。**發布輸出與需求 S11 範例字字相符**。
-  ↳ 後續精修（已套用）：**出勤時段沿用出勤人員的名字排序**(顯示與發布文字一致) §12 的 11.21、**移除 `ScheduleEntry.position`（不保留手動拖曳排序）** §12 的 11.22、**出勤時段預設改自動換算** §12 的 11.23、**換算紀錄保留（載入時依 `auto_start` 還原班次格）** §12 的 11.24、編輯班表頁頂部列凍結(sticky) §12 的 11.25、**自動發布改 HTML 送出、美容師名字超連結到資訊訊息** §12 的 11.27、**最上方新增日期欄位（小日曆），發布時置頂** §12 的 11.28。
+  ↳ 後續精修（已套用）：**出勤時段沿用出勤人員的名字排序**(顯示與發布文字一致) §12 的 11.21、**移除 `ScheduleEntry.position`（不保留手動拖曳排序）** §12 的 11.22、**出勤時段預設改自動換算** §12 的 11.23、**換算紀錄保留（載入時依 `auto_start` 還原班次格）** §12 的 11.24、編輯班表頁頂部列凍結(sticky) §12 的 11.25、**自動發布改 HTML 送出、美容師名字超連結到資訊訊息** §12 的 11.27、**最上方新增日期欄位（小日曆），發布時置頂** §12 的 11.28、**下方新增結語欄位（發布置底）** §12 的 11.29、**標題／結語可儲存・選用・編輯文字模板** §12 的 11.30。
 - **M6 社群 API 串接（通用骨架）**：發布目標設定(平台/權杖/目標 ID)、一鍵發布，
   內含 LINE Messaging API 與 Telegram 實作(urllib，免新套件)。權杖回應遮蔽(只露末四碼)。
   實測點發布**真的打到 LINE API**，假權杖回乾淨的 HTTP 401 → 整條管線通(P1)。
@@ -141,17 +142,20 @@ AhhOuch_Edit/
 
 ## 8. 目前狀態
 
-- 版本 **1.4.0**（使用者持續用 `app.toml` 控版次；會自行 prettier 格式化與 git commit）。
+- 版本 **1.5.0**（使用者持續用 `app.toml` 控版次；會自行 prettier 格式化與 git commit）。
   自 §5 完成 M0–M8（0.6.0）後，店家系統與社群發布持續精修並多次發版：
-  git **V0.6.0 → V1.0.0 → V1.1.0「店家系統」→ V1.2.0 → V1.3.0**。
-- **git 已提交至 `V1.3.0`**，其中**已含** §12 的 **11.26**（卡片自動發布複選內容＋發圖）與
-  **11.27**（班表名字超連結）。
-- **目前 working tree 尚未提交**（待併入下一次提交，`app.toml` 已 bump 1.3.0 → **1.4.0**）：
+  git **V0.6.0 → V1.0.0 → V1.1.0「店家系統」→ V1.2.0 → V1.3.0 → V1.4.0**。
+- **git 已提交至 `V1.4.0`**，其中**已含** §12 的 **11.26**（卡片自動發布複選內容＋發圖）、
+  **11.27**（班表名字超連結）與 **11.28**（班表日期欄位）。
+- **目前 working tree 尚未提交**（待併入下一次提交，`app.toml` 已 bump 1.4.0 → **1.5.0**）：
   - `backend/models/schedule.py`、`backend/database.py`、`backend/routers/store.py`、
-    `frontend/desktop/src/views/ScheduleEditView.vue` — **班表日期欄位（§12 的 11.28）**。
-  - `需求/AhhOuch 開發報告.md` — 本報告更新（§12 的 11.26–11.28 等）。
-  - `app.toml` — 版次 1.3.0 → 1.4.0。
-  - ⚠ 含**資料庫結構變更**（`Schedule.date`），依 §4-7 慣例，**後端需手動重啟**才會套用 migration。
+    `frontend/desktop/src/views/ScheduleEditView.vue` — **班表結語欄位（§12 的 11.29）**。
+  - `backend/models/text_template.py`（新檔）、`backend/models/__init__.py`、`backend/routers/store.py`、
+    `frontend/desktop/src/components/TextTemplateBar.vue`（新檔）、`frontend/desktop/src/api.js`、
+    `frontend/desktop/src/views/ScheduleEditView.vue` — **標題／結語文字模板（§12 的 11.30）**。
+  - `需求/AhhOuch 開發報告.md` — 本報告更新（§12 的 11.29–11.30）。
+  - `app.toml` — 版次 1.4.0 → 1.5.0。
+  - ⚠ 含**資料庫結構變更**（`Schedule.footer` 欄位、新增 `texttemplate` 表）與新端點，依 §4-7 慣例，**後端需手動重啟**才會套用 migration 與新端點。
 - 開發驗證輔助：曾用臨時 `preview_server.py`(8030) 做不干擾使用者 8000 的預覽；該檔已不存在，
   `.claude/launch.json` 中指向它的 `ahhouch-preview` 壞設定已移除（§12 的 11.17），並改提供
   `ahhouch-frontend`(Vite dev、5173) 供前端預覽。
@@ -217,7 +221,7 @@ python build.py
 > - 11.1 / 11.11 / 11.12 → M2（排序與拖曳）
 > - 11.2 / 11.3 / 11.4 / 11.7 / 11.13 → M3（卡片完整內容）
 > - 11.5 / 11.7 / 11.14 / 11.15 / 11.16 → M4（店家資訊卡片）
-> - 11.21 / 11.22 / 11.23 / 11.24 / 11.25 / 11.28 → M5（班表）
+> - 11.21 / 11.22 / 11.23 / 11.24 / 11.25 / 11.28 / 11.29 / 11.30 → M5（班表）
 > - 11.18 / 11.19 / 11.20 → M6（社群發布）
 > - 11.26 / 11.27 → M4＋M6（卡片自動發布內容選擇、名字超連結；亦影響 M5 班表發布）
 > - 11.8 / 11.17 → 開發環境（Vite 代理、README、預覽設定）
@@ -527,3 +531,41 @@ python build.py
 **前端**（`ScheduleEditView.vue`）：
 - 最上方新增「日期」panel：原生 `<input type="date">` 提供**小日曆**挑選，旁邊即時顯示 `formatDate`（JS `getDay()` 0=週日，對 `['日','一',…]`）。
 - `@change` 以 `updateSchedule({ date })` 即時存回後端。
+
+### 2026-06-21 — 班表結語欄位與標題/結語文字模板（M5 範圍精修）
+
+本批調整集中於**班表編輯頁新增「結語」欄位，以及標題／結語可儲存、選用、編輯文字模板**。涉及前後端與資料模型（新增 `Schedule.footer` 欄位、`TextTemplate` 表），未變更整體里程碑規劃。
+
+> ⚠ 兩項皆**改動了資料庫結構**（§11.29 加 `Schedule.footer`、§11.30 新增 `texttemplate` 表）與後端碼（新增端點），依 §4-7 慣例，**後端需手動重啟**才會套用 migration 與新端點。
+
+#### 11.29 班表新增「結語」欄位，發布時置於最下方（schedule 模型／store.py／ScheduleEditView）
+
+**需求**：編輯班表在「出勤時段」**下方**新增「結語」欄位，與「標題」相同的多行文字輸入框；發布時把結語放在**最下方**。
+
+**資料**：`Schedule` 新增 `footer`（多行字串，`_COLUMN_MIGRATIONS` 補欄 `schedule.footer`）。
+
+**後端**（`routers/store.py`）：
+- `ScheduleUpdate` 收 `footer`；`update_schedule` 寫入；序列化用 `model_dump` 自動帶出。
+- `publish-text`（純文字）與 `_schedule_html`（HTML）皆在所有出勤人員區塊之後，把結語當**最後一個 block** 附上（HTML 版 `html.escape`）；空白結語不輸出。
+
+**前端**（`ScheduleEditView.vue`）：
+- 「出勤時段」panel 下方新增「結語（可多行）」panel：`<textarea rows="3">`＋`@blur` 以 `updateSchedule({ footer })` 存回（與標題 §11 同款）。
+
+#### 11.30 標題與結語可儲存／選用／編輯文字模板（新增 TextTemplate 模型／store.py／TextTemplateBar／api.js／ScheduleEditView）
+
+**需求**：標題與結語讓使用者可以**儲存、選用、編輯模板**。
+**使用者定案**：①標題與結語**各自獨立**的模板池（套用標題模板不影響結語）；②操作介面放在**欄位旁的下拉選單＋按鈕**（非獨立管理頁）。
+
+**資料**：新增 `TextTemplate` 模型（`backend/models/text_template.py`，於 `models/__init__.py` 註冊）：`kind`（`title`｜`footer`，分池）、`name`、`content`、`position`。**新表由 `create_all` 自動建立，毋須登記 `_COLUMN_MIGRATIONS`。**
+
+**後端**（`routers/store.py`，新增 4 端點）：
+- `GET /api/store/text-templates?kind=` 依 kind 列出（依 `position`、`id` 排序）。
+- `POST /api/store/text-templates`（`kind`／`name`／`content`）建立，`position` 接同類別最後。
+- `PATCH /api/store/text-templates/{id}`（`name`／`content`）更新。
+- `DELETE /api/store/text-templates/{id}` 刪除。
+- 驗證：未知 `kind` 或名稱空白回 `422`、查無回 `404`。
+
+**前端**：
+- 新增可重用元件 `components/TextTemplateBar.vue`（props：`kind`／`current-text`，emit：`apply`）：下拉「套用模板」、`💾 另存為模板`（`prompt` 取名、以目前欄位內容建模板）、`⚙ 管理` 彈窗（每列可改名／改內容失焦存檔、「以目前內容覆蓋」、刪除）。**套用後下拉以 `nextTick` 重置回「套用模板…」**——同一次 `change` 內同步重置 `<select>` 的 v-model 不會反映到 DOM，須延後一個 tick。
+- `api.js` 新增 `listTextTemplates`／`createTextTemplate`／`updateTextTemplate`／`deleteTextTemplate`。
+- `ScheduleEditView.vue`：標題與結語 panel 各放一條 `<TextTemplateBar :kind>`，`@apply` 以模板內容**覆蓋**欄位並立即存檔（`applyTitleTemplate`／`applyFooterTemplate`）。

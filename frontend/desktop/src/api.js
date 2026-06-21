@@ -140,6 +140,12 @@ export const api = {
   // 自動發布班表（HTML，名字自動連到該美容師資訊訊息）
   publishSchedule: (id, data) => request('POST', `/api/store/schedules/${id}/publish`, data),
 
+  // 標題／結語文字模板（kind = "title" | "footer"）
+  listTextTemplates: (kind) => request('GET', `/api/store/text-templates?kind=${encodeURIComponent(kind)}`),
+  createTextTemplate: (data) => request('POST', '/api/store/text-templates', data),
+  updateTextTemplate: (id, data) => request('PATCH', `/api/store/text-templates/${id}`, data),
+  deleteTextTemplate: (id) => request('DELETE', `/api/store/text-templates/${id}`),
+
   // ===== 社群發布 (P1) =====
   publishPlatforms: () => request('GET', '/api/publish/platforms'),
   listTargets: () => request('GET', '/api/publish/targets'),

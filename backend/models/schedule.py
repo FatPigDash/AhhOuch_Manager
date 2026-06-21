@@ -14,6 +14,7 @@ from sqlmodel import Field, SQLModel
 class Schedule(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     title: str = ""  # 標題，可多行 (S6)
+    footer: str = ""  # 結語，可多行；發布時置於最下方
     date: str = ""   # 班表日期，ISO 格式 "YYYY-MM-DD"，可空；發布時格式化置於最上方
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
