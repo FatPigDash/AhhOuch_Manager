@@ -27,6 +27,10 @@ async function load() {
   try {
     schedule.value = await api.getSchedule(props.id)
     await restoreShiftGrids()
+    // 載入後讓既有時段 pill 即依時間序顯示；僅前端排序，下次變更才寫回 DB。
+    for (const entry of schedule.value.entries) {
+      entry.slots = sortedSlots(entry.slots)
+    }
   } catch (e) { error.value = e.message }
 }
 // 換算紀錄保留：已存過上班時間（auto_start）的人員，載入時依該時間重算出班次格，
@@ -94,10 +98,39 @@ async function toggleAttend(card) {
 }
 
 // 時段共用
+// 時段 pill 一律依時間序排列，規則只看 pill 的時間本身，不分手動輸入或自動換算模式。
+// 跨午夜班次處理：把各時段視為 24 小時圓環上的點，找出最大的空檔（含跨午夜回繞），
+// 班次即從該空檔之後的時段開始連續排列。例：{19:30,20:00,22:30,01:30} 最大空檔在
+// 01:30→19:30，故排成 19:30、20:00、22:30、01:30（傍晚連到凌晨）。
+function sortedSlots(slots) {
+  const toMin = (s) => {
+    const [h, m] = String(s).split(':').map(Number)
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0)
+  }
+  const arr = slots.slice().sort((a, b) => toMin(a) - toMin(b))  // 先依時鐘分鐘排序
+  const n = arr.length
+  if (n <= 1) return arr
+  // 找最大間隔，班次從間隔之後那一格開始（旋轉）
+  let startIdx = 0
+  let maxGap = -1
+  for (let i = 0; i < n; i++) {
+    const cur = toMin(arr[i])
+    const next = toMin(arr[(i + 1) % n]) + (i + 1 === n ? 1440 : 0)  // 最後一格回繞 +24h
+    const gap = next - cur
+    if (gap > maxGap) { maxGap = gap; startIdx = (i + 1) % n }
+  }
+  return arr.slice(startIdx).concat(arr.slice(0, startIdx))
+}
 async function saveSlots(entry, slots) {
   try {
-    const updated = await api.updateEntry(entry.id, { slots })
-    entry.slots = updated.slots
+    const updated = await api.updateEntry(entry.id, { slots: sortedSlots(slots) })
+    // 後端會把手動輸入正規化（如 1830→18:30），正規化後時間序可能改變 → 再排一次並補存
+    const reordered = sortedSlots(updated.slots)
+    if (reordered.join('|') !== updated.slots.join('|')) {
+      entry.slots = (await api.updateEntry(entry.id, { slots: reordered })).slots
+    } else {
+      entry.slots = updated.slots
+    }
   } catch (e) { error.value = e.message }
 }
 function removeSlot(entry, idx) {
@@ -135,7 +168,7 @@ async function computeShifts(entry) {
 function toggleShift(entry, slot) {
   const has = entry.slots.includes(slot)
   const next = has ? entry.slots.filter((s) => s !== slot) : [...entry.slots, slot]
-  saveSlots(entry, next)
+  saveSlots(entry, next)  // 排序由 saveSlots 統一處理（依時間序，含跨午夜）
 }
 
 // 發布 (S11)
