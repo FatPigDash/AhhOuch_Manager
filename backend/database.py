@@ -36,6 +36,9 @@ _COLUMN_MIGRATIONS: dict[str, dict[str, str]] = {
     "storecard": {
         "info_link": "TEXT DEFAULT ''",  # 美容師資訊訊息連結（自動發布時擷取）
     },
+    "schedule": {
+        "date": "TEXT DEFAULT ''",  # 班表日期（ISO YYYY-MM-DD）
+    },
 }
 
 # 既有 DB 移除欄位用：{資料表: [欄位, ...]}（模型已不再使用，需從舊 DB 清除，

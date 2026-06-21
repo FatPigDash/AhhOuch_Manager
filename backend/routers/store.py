@@ -60,6 +60,7 @@ class ScheduleCreate(BaseModel):
 
 class ScheduleUpdate(BaseModel):
     title: str | None = None
+    date: str | None = None  # ISO "YYYY-MM-DD"，空字串＝清除日期
 
 
 class PublishSchedule(BaseModel):
@@ -350,6 +351,22 @@ def _entry_slots(entry: ScheduleEntry) -> list[str]:
         return []
 
 
+# datetime.weekday(): 週一=0 … 週日=6
+_WEEKDAY_TW = "一二三四五六日"
+
+
+def _format_date(iso: str) -> str:
+    """把 ISO 日期 "2026-06-21" 格式化為 "2026/06/21 (日)"；空或無法解析則回原值/空字串。"""
+    iso = (iso or "").strip()
+    if not iso:
+        return ""
+    try:
+        d = datetime.strptime(iso, "%Y-%m-%d")
+    except ValueError:
+        return iso
+    return f"{d.year}/{d.month:02d}/{d.day:02d} ({_WEEKDAY_TW[d.weekday()]})"
+
+
 def _serialize_entry(session: Session, entry: ScheduleEntry) -> dict:
     card = session.get(StoreCard, entry.store_card_id)
     return {
@@ -419,6 +436,8 @@ def update_schedule(
     schedule = _get_or_404(session, Schedule, schedule_id, "班表")
     if data.title is not None:
         schedule.title = data.title
+    if data.date is not None:
+        schedule.date = data.date.strip()
     schedule.updated_at = datetime.now()
     session.add(schedule)
     session.commit()
@@ -516,6 +535,9 @@ def schedule_publish_text(
     ]
     pairs.sort(key=lambda p: _name_sort_key(p[0].name))
     blocks: list[str] = []
+    date_str = _format_date(schedule.date)
+    if date_str:
+        blocks.append(date_str)
     if schedule.title.strip():
         blocks.append(schedule.title.strip())
     for card, entry in pairs:
@@ -552,6 +574,9 @@ def _schedule_html(session: Session, schedule: Schedule) -> str:
     其餘文字一律 HTML 跳脫，避免 < > & 破壞格式。結構與純文字版 (S11) 相同。
     """
     blocks: list[str] = []
+    date_str = _format_date(schedule.date)
+    if date_str:
+        blocks.append(html.escape(date_str))
     if schedule.title.strip():
         blocks.append(html.escape(schedule.title.strip()))
     for card, entry in _schedule_pairs(session, schedule.id):

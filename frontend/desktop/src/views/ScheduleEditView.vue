@@ -50,6 +50,20 @@ function saveTitle() {
   api.updateSchedule(props.id, { title: schedule.value.title }).catch((e) => (error.value = e.message))
 }
 
+// 日期：用原生小日曆挑選，存 ISO（YYYY-MM-DD）；顯示/發布格式為 2026/06/21 (日)。
+const WEEKDAY_TW = ['日', '一', '二', '三', '四', '五', '六'] // JS getDay(): 0=週日
+function formatDate(iso) {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d) return iso
+  const wd = WEEKDAY_TW[new Date(y, m - 1, d).getDay()]
+  const p = (n) => String(n).padStart(2, '0')
+  return `${y}/${p(m)}/${p(d)} (${wd})`
+}
+function saveDate() {
+  api.updateSchedule(props.id, { date: schedule.value.date || '' }).catch((e) => (error.value = e.message))
+}
+
 // 出勤人員 (S7/S8)
 function isAttending(cardId) {
   return schedule.value.entries.some((e) => e.store_card_id === cardId)
@@ -163,6 +177,18 @@ onMounted(() => { load(); loadCards() })
       <button class="primary publish-btn" @click="openPublish">📤 發布</button>
     </div>
     <p v-if="error" class="error">{{ error }}</p>
+
+    <!-- 日期：發布時置於最上方 -->
+    <div class="panel">
+      <label class="field">
+        <span>日期</span>
+        <div class="date-row">
+          <input type="date" v-model="schedule.date" @change="saveDate" />
+          <span v-if="schedule.date" class="date-preview">{{ formatDate(schedule.date) }}</span>
+          <span v-else class="hint">未選擇日期（發布時不顯示日期）</span>
+        </div>
+      </label>
+    </div>
 
     <!-- 標題 (S6) -->
     <div class="panel">
@@ -293,6 +319,9 @@ onMounted(() => { load(); loadCards() })
 .panel h2 { margin: 0 0 12px; font-size: 1.1rem; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; color: #486581; }
 .field textarea { padding: 8px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.95rem; color: #1f2933; resize: vertical; }
+.date-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.date-row input[type="date"] { padding: 7px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.95rem; color: #1f2933; }
+.date-preview { font-weight: 700; color: #102a43; }
 
 .attend-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .attend-pill { padding: 6px 14px; border: 1px solid #cbd2d9; border-radius: 999px; background: #fff; color: #486581; }
