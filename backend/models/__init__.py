@@ -9,13 +9,14 @@ from .image import CardImage
 from .publish import PublishTarget
 from .review import CardReview, ReviewScore
 from .schedule import Schedule, ScheduleEntry
-from .spa import Spa
+from .spa import Spa, SpaStaff
 from .store import StoreCard, StoreCardImage
 from .template import RatingTemplate, RatingTemplateItem
 from .text_template import TextTemplate
 
 __all__ = [
     "Spa",
+    "SpaStaff",
     "Board",
     "CustomerCard",
     "CardImage",

@@ -42,6 +42,8 @@ export const api = {
   getSpa: (id) => request('GET', `/api/customer/spas/${id}`),
   updateSpa: (id, data) => request('PATCH', `/api/customer/spas/${id}`, data),
   deleteSpa: (id) => request('DELETE', `/api/customer/spas/${id}`),
+  // 養身館拖曳排序 (C3)：position 為新的列表索引
+  moveSpa: (id, data) => request('POST', `/api/customer/spas/${id}/move`, data),
 
   // 看板 (C4/C5/C6)
   createBoard: (spaId, data) => request('POST', `/api/customer/spas/${spaId}/boards`, data),

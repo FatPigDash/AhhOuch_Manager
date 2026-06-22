@@ -8,7 +8,7 @@
 > - [`AhhOuch 開發計畫.md`](./AhhOuch%20開發計畫.md) — 開發前的總體規劃與需求對照表（修訂歷程已移至本報告 §12）
 > - [`../CHANGELOG.md`](../CHANGELOG.md) — 版本修訂紀錄（依版次）
 >
-> 報告產生日期：2026-06-20（最後更新：2026-06-21，§12 增列 11.31：出勤時段時間序排列）
+> 報告產生日期：2026-06-20（最後更新：2026-06-23，§12 增列 11.32–11.35：看板垂直捲軸、簡介/心得自動長高、養身館拖曳排序、養身館多幹部＋聯絡資訊）
 > ｜ 對應版本：1.6.0（自 §5 的 0.6.0 後持續精修發版，使用者以 `app.toml` 控版次） ｜ 狀態：**M0–M8 全部完成，並持續精修**
 
 ---
@@ -149,12 +149,16 @@ AhhOuch_Edit/
   **11.27**（班表名字超連結）、**11.28**（班表日期欄位）、**11.29**（班表結語欄位）、
   **11.30**（標題／結語文字模板），以及 **11.31**（出勤時段時間序排列）的早期版本
   （僅自動換算依換算清單、手動依時鐘時間）。
-- **目前 working tree 尚未提交**（待併入下一次提交，`app.toml` 已 bump 1.5.0 → **1.6.0**）：
-  - `frontend/desktop/src/views/ScheduleEditView.vue` — **出勤時段時間序排列改為與模式無關的
-    「最大空檔旋轉」規則（§12 的 11.31 現行版本，正確涵蓋手動輸入的跨午夜班次）**。
-  - `需求/AhhOuch 開發報告.md` — 本報告更新（§12 的 11.31）。
-  - `app.toml` — 版次 1.5.0 → 1.6.0。
-  - 此批為**純前端邏輯**，無資料庫結構或後端／端點變更（毋須重啟後端套 migration）。
+- **git 已提交至 `V1.6.0`**（含 §12 的 11.31 現行版本：出勤時段「最大空檔旋轉」排序）。
+- **目前 working tree 尚未提交**——本次對話的客人模式精修（§12 的 **11.32–11.35**，`app.toml` 尚未 bump）：
+  - `frontend/desktop/src/views/SpaBoardView.vue` — 看板垂直捲軸＋多幹部頁頂顯示（11.32／11.35）。
+  - `frontend/desktop/src/views/CardDetailView.vue` — 簡介/心得文字框 `v-autogrow`（11.33）。
+  - `frontend/desktop/src/views/SpaListView.vue` — 養身館拖曳排序＋插入提示、多幹部編輯表單（11.34／11.35）。
+  - `frontend/desktop/src/api.js` — 新增 `moveSpa`（11.34）。
+  - `backend/models/spa.py`、`backend/models/__init__.py` — 新增 `Spa.position` 與 `SpaStaff` 表（11.34／11.35）。
+  - `backend/routers/customer.py` — `move_spa` 端點、`staff_members` 整批覆蓋、回傳含幹部清單。
+  - `backend/database.py` — 遷移：`spa.position` 回填、`spastaff` 搬遷後移除 `spa.staff`。
+  - ⚠ 此批**含資料庫結構與後端／端點變更**（非純前端）：改碼後**需重啟後端**，首次啟動 `_migrate()` 會自動遷移既有 DB（已驗證遷移與資料保留）。
 - 開發驗證輔助：曾用臨時 `preview_server.py`(8030) 做不干擾使用者 8000 的預覽；該檔已不存在，
   `.claude/launch.json` 中指向它的 `ahhouch-preview` 壞設定已移除（§12 的 11.17），並改提供
   `ahhouch-frontend`(Vite dev、5173) 供前端預覽。
@@ -216,9 +220,10 @@ python build.py
 > 保留原 `11.x` 子編號以維持各條目彼此的交叉引用。
 >
 > **這些調整皆已實作並套用至現行程式（＝目前實際行為），非待辦。** 與里程碑的對應：
-> - 11.6 / 11.9 / 11.10 → M1（看板卡片顯示）
-> - 11.1 / 11.11 / 11.12 → M2（排序與拖曳）
-> - 11.2 / 11.3 / 11.4 / 11.7 / 11.13 → M3（卡片完整內容）
+> - 11.6 / 11.9 / 11.10 / 11.32 → M1（看板卡片顯示）
+> - 11.1 / 11.11 / 11.12 / 11.34 → M2（排序與拖曳）
+> - 11.2 / 11.3 / 11.4 / 11.7 / 11.13 / 11.33 → M3（卡片完整內容）
+> - 11.34 / 11.35 → M1（養身館列表排序、多幹部與聯絡資訊，C2/C3）
 > - 11.5 / 11.7 / 11.14 / 11.15 / 11.16 → M4（店家資訊卡片）
 > - 11.21 / 11.22 / 11.23 / 11.24 / 11.25 / 11.28 / 11.29 / 11.30 / 11.31 → M5（班表）
 > - 11.18 / 11.19 / 11.20 → M6（社群發布）
@@ -588,3 +593,50 @@ python build.py
 **邊界**：規則假設「一段班次是連續時間、中間有明顯的下班空窗」；若時段近乎平均分布到繞滿整圈（無明顯空檔），起點以最大空檔為準——對正常班表為合理結果。
 
 **驗證**（dev server 實機）：截圖回報的 `19:30,22:30,01:30,20:00` → `19:30,20:00,22:30,01:30`；於其上互動加入 `21:00`、`00:00` → `19:30,20:00,21:00,22:30,00:00,01:30`（正確插入並存回後端）；純白天 `12:00,07:00,15:00,09:30` → `07:00,09:30,12:00,15:00`（不誤旋轉）。
+
+### 2026-06-23 — 客人模式看板/簡介 UX 與養身館資料模型調整（M1–M3 範圍精修）
+
+本批集中於**客人端的看板捲動、簡介/心得輸入體驗，以及養身館列表的排序與幹部資料模型**。其中 11.34／11.35 **變更資料庫結構**（新增 `Spa.position`、新增 `spastaff` 表、移除 `Spa.staff` 欄位），首次啟動會由 `database.py` 的 `_migrate()` 自動完成遷移（既有資料保留），**改碼後需重啟後端**才會套用。
+
+#### 11.32 看板畫面新增垂直捲軸，卡片以原始高度顯示（客人 SpaBoardView）
+
+**需求**：原本整個看板被限制在單一螢幕高度內（`.board` 設 `max-height: calc(100vh - 200px)`、`.card-list` 內部 `overflow-y:auto`），導致每張卡片被壓縮。改為整頁可垂直捲動、卡片以原始高度呈現。
+
+**作法**（`frontend/desktop/src/views/SpaBoardView.vue`，純 CSS）：
+- 移除 `.board` 的 `max-height`，讓看板欄依內容自然撐高。
+- 移除 `.card-list` 的 `overflow-y:auto`，取消欄內捲軸。
+- 整頁改由瀏覽器垂直捲軸捲動；水平捲動（看板之間）與按住空白處左右拖曳捲動維持不變。手機版（≤640px）原即 `max-height:none`，不受影響。
+
+**驗證**（dev server 實機）：`.board` 計算後 `max-height:none`、`.card-list` `overflow-y:visible` 不再內部捲動、整頁 `scrollHeight > 視窗高`，卡片封面圖完整顯示無壓縮；無 console 錯誤。
+
+#### 11.33 美容師簡介與心得文字框隨內容自動長高，不出現垂直捲軸（客人 CardDetailView）
+
+**需求**：「美容師簡介」的文字說明、以及「心得」的心得文字，輸入框要隨內容增長自動長高，不要使用垂直捲軸。
+
+**作法**（`frontend/desktop/src/views/CardDetailView.vue`）：
+- 新增區域自訂指令 `v-autogrow`：`input` 時將 `height` 先設 `auto` 再設為 `scrollHeight`，並關閉 `overflow-y`（hidden）與 `resize`（none）；`updated` 鉤子於載入資料或程式設值後重算高度（`nextTick`）。
+- 套用於「文字說明」（`card.intro_text`）與每則「心得文字」（`r.text`，`v-for` 共用同一指令）。
+
+**驗證**（dev server 實機）：以實際內容測試，`overflow-y:hidden`、內容不裁切；簡介加 5 行 336→432px、心得加 4 行 68→106px，皆自動長高。乾淨載入與正常操作 0 錯誤（開發期 console 曾見的 `invokeDirectiveHook` 錯誤為 HMR 熱更新時舊 vnode 缺少新指令的假象，非執行階段問題）。
+
+#### 11.34 養身館列表支援拖曳排序＋插入提示（新增 `Spa.position`／move 端點／SpaListView）
+
+**需求**：養身館卡片之間可拖曳改變順序，並有插入位置提示。
+
+**作法**：
+- **後端**：`Spa` 新增 `position` 欄位（`models/spa.py`）；`database.py` 的 `_COLUMN_MIGRATIONS` 登記 `spa.position`，並於補欄位時以相關子查詢依 `created_at` 回填 0,1,2…（保留既有列表順序）。`routers/customer.py`：`list_spas` 改 `ORDER BY position, created_at`、`create_spa` 以 `_next_position` 把新養身館排到最後、新增 `POST /spas/{id}/move`（沿用看板 `move_board` 的重新編號邏輯）。`api.js` 新增 `moveSpa`。
+- **前端**（`SpaListView.vue`）：引入 SortableJS，卡片右上角加拖曳把手 `⠿`（`handle:.spa-drag`，避免與點擊開啟、編輯/刪除衝突），拖曳時以虛線藍框 `.spa-ghost` 標示插入位置（與看板插入提示一致）；`onEnd` 還原 DOM 後呼叫 `moveSpa` 再 `load()`。
+
+**驗證**（dev server 實機）：遷移後 `position` 回填 0,1,2,3；`move` 端點把第 1 間移到位置 2 → 222/333/111/4752745、再還原正確；前端 Sortable 實例掛上且選項正確（`draggable:.spa-card`/`handle:.spa-drag`/`ghostClass:spa-ghost`），把手與虛線插入提示樣式正確。（拖曳手勢本身無法用合成事件模擬——桌面 SortableJS 走原生 HTML5 DnD，與既有看板拖曳同限制。）
+
+#### 11.35 養身館支援多位幹部，各含聯絡資訊（新增 `SpaStaff` 表／移除 `Spa.staff`／SpaListView／SpaBoardView）
+
+**需求**：每張養身館卡片可有多位幹部，且每位幹部新增「聯絡資訊」欄位。
+
+**作法**：
+- **資料模型**（`models/spa.py`）：移除 `Spa` 的單一字串 `staff`，新增一對多 `SpaStaff`（`spa_id` FK／`name`／`contact` 聯絡資訊／`position`）；`models/__init__.py` 匯出 `SpaStaff`。
+- **遷移**（`database.py`）：`_backfill_spa_staff()` 先把舊的 `spa.staff` 非空值搬進 `spastaff`（保留既有幹部），再由 `_DROP_COLUMNS["spa"]=["staff"]` 移除 `staff` 欄位——**順序不可顛倒**，否則殘留的 NOT NULL 欄位會讓新版 INSERT 失敗。
+- **API**（`routers/customer.py`）：新增 `StaffMemberIn`；`list_spas`／`get_spa`／`create_spa` 回傳含 `staff_members`；`update_spa` 以「整批覆蓋」更新幹部清單（空白名稱略過、未提供 `staff_members` 則不動）；`delete_spa` 一併清除幹部。
+- **前端**：`SpaListView.vue` 編輯表單改為可多列的幹部清單，每位幹部分兩行——第一行「幹部名稱＋輸入框」、第二行「聯絡資訊＋輸入框」（兩輸入框提示詞皆「選填」），含「＋ 新增幹部」與每列移除 ✕；卡片顯示逐位列出 `👤 名字．聯絡資訊`。`SpaBoardView.vue` 看板頁頂同步改為列出多位幹部與聯絡資訊。
+
+**驗證**（dev server 實機）：遷移後 `spa.staff` 欄位移除、`spastaff` 表建立、舊幹部「nty」自動搬入；後端可多筆新增（含聯絡資訊、UTF-8 正確）、空白名稱略過、省略時不更動；前端端到端：編輯→既有幹部預填→新增第二位→儲存→列表與看板頁皆正確顯示兩位幹部與聯絡資訊；編輯表單兩輸入框各為「標籤＋輸入框」同一行、兩行上下排列。測試資料已還原。

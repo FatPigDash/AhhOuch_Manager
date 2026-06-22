@@ -227,7 +227,13 @@ onBeforeUnmount(() => {
       <button class="back" @click="router.push('/')">← 養身館列表</button>
       <h1>{{ spa.name }}</h1>
       <span v-if="spa.address" class="meta">📍 {{ spa.address }}</span>
-      <span v-if="spa.staff" class="meta">👤 {{ spa.staff }}</span>
+      <span
+        v-for="m in spa.staff_members"
+        :key="m.id"
+        class="meta"
+      >
+        👤 {{ m.name }}<template v-if="m.contact">．{{ m.contact }}</template>
+      </span>
     </div>
     <p v-if="error" class="error">{{ error }}</p>
 
@@ -384,7 +390,7 @@ onBeforeUnmount(() => {
   padding: 10px;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 200px);
+  /* 不再限制看板高度，讓卡片以原始高度顯示，整頁由垂直捲軸捲動 */
 }
 .board-head {
   display: flex;
@@ -472,7 +478,6 @@ onBeforeUnmount(() => {
   margin: 0 0 8px;
   padding: 0;
   min-height: 12px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;

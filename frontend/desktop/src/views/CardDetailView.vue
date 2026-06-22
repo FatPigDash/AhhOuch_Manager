@@ -1,7 +1,25 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import { api } from '../api'
+
+// 文字框隨內容自動長高（不出現垂直捲軸）
+function autogrow(el) {
+  el.style.height = 'auto'
+  el.style.height = el.scrollHeight + 'px'
+}
+const vAutogrow = {
+  mounted(el) {
+    el.style.overflowY = 'hidden'
+    el.style.resize = 'none'
+    el.addEventListener('input', () => autogrow(el))
+    nextTick(() => autogrow(el))
+  },
+  updated(el) {
+    // 載入資料或程式設值（v-model）後重新計算高度
+    nextTick(() => autogrow(el))
+  },
+}
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
 const router = useRouter()
@@ -437,7 +455,7 @@ onBeforeUnmount(() => {
         </label>
         <label class="field">
           <span>文字說明</span>
-          <textarea v-model="card.intro_text" rows="4"></textarea>
+          <textarea v-model="card.intro_text" rows="4" v-autogrow></textarea>
         </label>
       </div>
     </div>
@@ -579,7 +597,7 @@ onBeforeUnmount(() => {
 
           <label class="field">
             <span>心得文字</span>
-            <textarea v-model="r.text" rows="3"></textarea>
+            <textarea v-model="r.text" rows="3" v-autogrow></textarea>
           </label>
         </div>
       </template>

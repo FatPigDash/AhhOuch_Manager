@@ -20,6 +20,9 @@ engine = create_engine(
 
 # 既有 DB 補欄位用：{資料表: {欄位: "型別 預設值"}}
 _COLUMN_MIGRATIONS: dict[str, dict[str, str]] = {
+    "spa": {
+        "position": "INTEGER DEFAULT 0",  # 養身館列表的手動排序位置 (C3)
+    },
     "customercard": {
         "nationality": "TEXT DEFAULT ''",
         "intro_text": "TEXT DEFAULT ''",
@@ -47,7 +50,31 @@ _COLUMN_MIGRATIONS: dict[str, dict[str, str]] = {
 _DROP_COLUMNS: dict[str, list[str]] = {
     "storecard": ["position"],  # 排序改為依名字計算，不再保存手動排序位置
     "scheduleentry": ["position"],  # 出勤時段改依名字排序，不保留手動拖曳排序
+    "spa": ["staff"],  # 幹部改為一對多 SpaStaff，移除單一字串欄位 (C2)
 }
+
+
+def _backfill_spa_staff(conn) -> None:
+    """將舊版單一 spa.staff 文字搬進 spastaff 一對多表 (C2)。
+
+    僅在 spa 仍有 staff 欄位、且 spastaff 尚未有任何資料時執行一次，
+    避免重複搬遷。完成後 staff 欄位由 _DROP_COLUMNS 移除。
+    """
+    spa_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(spa)"))}
+    if "staff" not in spa_cols:
+        return  # 全新 DB 或已搬遷
+    if not {row[1] for row in conn.execute(text("PRAGMA table_info(spastaff)"))}:
+        return  # spastaff 表尚未建立（理論上 create_all 已建好）
+    already = conn.execute(text("SELECT COUNT(*) FROM spastaff")).scalar()
+    if already:
+        return
+    conn.execute(
+        text(
+            "INSERT INTO spastaff (spa_id, name, contact, position) "
+            "SELECT id, staff, '', 0 FROM spa "
+            "WHERE staff IS NOT NULL AND TRIM(staff) != ''"
+        )
+    )
 
 
 def _migrate() -> None:
@@ -67,6 +94,18 @@ def _migrate() -> None:
                         conn.execute(
                             text("UPDATE customercard SET manual_position = position")
                         )
+                    # 既有養身館依建立順序回填排序位置，保留目前的列表順序 (C3)
+                    if table == "spa" and col == "position":
+                        conn.execute(
+                            text(
+                                "UPDATE spa SET position = ("
+                                "SELECT COUNT(*) FROM spa s2 "
+                                "WHERE s2.created_at < spa.created_at "
+                                "OR (s2.created_at = spa.created_at AND s2.id < spa.id))"
+                            )
+                        )
+        # 先把舊的單一 staff 搬進 spastaff，再移除 staff 欄位（順序不可顛倒）
+        _backfill_spa_staff(conn)
         for table, columns in _DROP_COLUMNS.items():
             existing = {
                 row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))
