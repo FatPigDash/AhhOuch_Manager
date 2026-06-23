@@ -1,4 +1,4 @@
-# AhhOuch 開發報告
+# AhhOuch_Manager 開發報告
 
 > **本文件用途**：作為專案的「單一銜接文件」。之後開新對話只要先讀本檔，即可掌握
 > 專案目標、最終架構、關鍵慣例、開發歷程、目前進度與待辦，無需重讀整個對話。
@@ -8,16 +8,16 @@
 > - [`AhhOuch 開發計畫.md`](./AhhOuch%20開發計畫.md) — 開發前的總體規劃與需求對照表（修訂歷程已移至本報告 §12）
 > - 版本修訂紀錄（依版次）— 已整合於本報告 §5 附錄（原獨立檔 `CHANGELOG.md` 已移除）
 >
-> 報告產生日期：2026-06-20（最後更新：2026-06-23，§12 增列 11.32–11.35：看板垂直捲軸、簡介/心得自動長高、養身館拖曳排序、養身館多幹部＋聯絡資訊）
-> ｜ 對應版本：1.6.0（自 §5 的 0.6.0 後持續精修發版，使用者以 `app.toml` 控版次） ｜ 狀態：**M0–M8 全部完成，並持續精修**
+> 報告產生日期：2026-06-20（最後更新：2026-06-23，§12 增列 11.36：**系統拆分——移除客人系統、原「店家」更名為「幹部」(cadre)**；前次為 11.32–11.35 客人端精修）
+> ｜ 對應版本：app.toml 1.7.0／git V2.0.0（自 §5 的 0.6.0 後持續精修發版，使用者以 `app.toml` 控版次） ｜ 狀態：**M0–M8 全部完成；2026-06-23 起拆分為「幹部」單一系統（客人系統已移除）**
 
 ---
 
 ## 1. 專案一句話
 
-養身館資訊管理網頁軟體，分兩種角色：
-- **客人**：記錄各養身館美容師的資訊與心得（看板化管理，類 Trello）。
-- **店家**：管理美容師資訊卡片與班表，產生內容發布到社群群組。
+養身館**幹部**用的資訊管理網頁軟體：管理美容師資訊卡片與班表，產生內容發布到社群群組。
+
+> 原本另含「客人」角色（記錄各養身館美容師資訊與心得，看板化管理，類 Trello）；2026-06-23 已把兩者拆為獨立產品，**本專案僅保留原「店家」系統並更名為「幹部」**（程式碼識別字＝`cadre`），客人系統整組移除（詳見 §12 的 11.36）。
 
 初期單機單人（開發者電腦當伺服器），架構保留多使用者／區網擴充。
 
@@ -42,17 +42,16 @@ AhhOuch_Edit/
 ├─ backend/
 │  ├─ main.py            FastAPI app、掛載 /images 與靜態前端、啟動建 DATA/+init_db
 │  ├─ version.py         讀 app.toml（唯一取值來源）
-│  ├─ config.py          路徑（開發 vs 凍結 exe 差異）、預設看板/評分項目
-│  ├─ database.py        SQLite 引擎、init_db、_migrate(補欄位)、_cleanup_legacy_data(清遺留)、_seed_defaults
-│  ├─ models/            spa board card image review template text_template store schedule publish
-│  ├─ routers/           customer.py(客人) store.py(店家+班表) publish.py(社群發布)
+│  ├─ config.py          路徑（開發 vs 凍結 exe 差異）
+│  ├─ database.py        SQLite 引擎、init_db、_migrate_legacy_split(店家→幹部更名+移除客人表)、_migrate_columns(補欄位)、_cleanup_legacy_data(清遺留)
+│  ├─ models/            cadre schedule text_template publish
+│  ├─ routers/           cadre.py(幹部資訊卡片+班表) publish.py(社群發布)
 │  └─ services/          image_service shift_calculator time_utils publish_service
 ├─ frontend/
 │  ├─ desktop/src/
-│  │  ├─ views/          SpaListView SpaBoardView CardDetailView
-│  │  │                  StoreCardListView StoreCardDetailView
+│  │  ├─ views/          CadreCardListView CadreCardDetailView
 │  │  │                  ScheduleListView ScheduleEditView PublishSettingsView
-│  │  ├─ components/      StoreNav.vue  TextTemplateBar.vue（標題/結語模板列）
+│  │  ├─ components/      CadreNav.vue  TextTemplateBar.vue（標題/結語模板列）
 │  │  ├─ api.js  router.js  App.vue  style.css
 │  └─ mobile/            （保留作未來擴充；手機目前用響應式，非獨立 app）
 ├─ DATA/                 ahhouch.db + images/（gitignore；啟動自動建立）
@@ -66,11 +65,13 @@ AhhOuch_Edit/
 2. **路徑差異**由 `backend/config.py` 處理：
    - 唯讀資源（前端 dist、app.toml）：開發在專案內、凍結時在 `sys._MEIPASS`。
    - `DATA/`（可寫）：開發在專案根、凍結時在 exe 旁。
-3. **資料庫遷移**：SQLite 不會自動 `ALTER`，故 `database.py` 的 `_migrate()` 處理兩類：
-   `_COLUMN_MIGRATIONS`（PRAGMA 比對後 **ADD COLUMN**）與 `_DROP_COLUMNS`（**DROP COLUMN**，
-   SQLite 3.35+）。**新增 model 欄位時，一定要在 `_COLUMN_MIGRATIONS` 登記；移除 model 欄位
-   時，要在 `_DROP_COLUMNS` 登記**（否則舊 DB 殘留的 NOT NULL 欄位會讓新版 INSERT 失敗），
-   既有使用者資料才不會在升級時壞掉。
+3. **資料庫遷移**：SQLite 不會自動 `ALTER`，由 `database.py` 處理，**執行順序固定**：
+   先 `_migrate_legacy_split()`（**必須在 `create_all` 之前**：把舊「店家」表更名為「幹部」
+   `storecard→cadrecard` 等、欄位 `store_card_id→cadre_card_id`、並 `DROP` 客人系統殘留表）→
+   `create_all` → `_migrate_columns()`（`_COLUMN_MIGRATIONS`：PRAGMA 比對後 **ADD COLUMN**）→
+   `_cleanup_legacy_data()`（清 LINE 殘留目標）。**新增 model 欄位時，一定要在
+   `_COLUMN_MIGRATIONS` 登記**，既有使用者資料才不會在升級時壞掉。表／欄位更名與整表移除
+   的實作見 §12 的 11.36（含「更名必須早於 `create_all`」的原因）。
 4. **封面圖**由各圖片表的 `is_cover` 計算，回應時組出 `cover_image`，卡片本身不存封面欄。
 5. **圖片**存 `DATA/images/`，DB 只存檔名；支援檔案上傳與剪貼簿 base64 貼上（PoC 6.1 已驗證）。
 6. **發布**：第一階段產生「排版圖片(html2canvas)＋純文字」供手動貼；第二階段 API 自動發布。
@@ -209,8 +210,8 @@ AhhOuch_Edit/
 | --- | --- |
 | G1 電腦＋手機介面 | ✅ 響應式 |
 | G2/G3 資料獨立・本機伺服器 | ✅（保留多使用者擴充） |
-| C1–C22 客人全功能 | ✅ |
-| S1–S12 店家資訊卡片＋班表 | ✅（發布格式與範例相符） |
+| C1–C22 客人全功能 | ⬛ 已拆分至獨立產品；本專案已移除（§12 的 11.36） |
+| S1–S12 幹部資訊卡片＋班表 | ✅（發布格式與範例相符；原「店家」已更名為「幹部」） |
 | X1–X6 打包/設定/環境/README/DATA | ✅ |
 | P1 社群自動發布 | 🟡 **骨架完成**；真正推送待使用者申請平台帳號＋填權杖 |
 
@@ -223,19 +224,13 @@ AhhOuch_Edit/
   **11.27**（班表名字超連結）、**11.28**（班表日期欄位）、**11.29**（班表結語欄位）、
   **11.30**（標題／結語文字模板），以及 **11.31**（出勤時段時間序排列）的早期版本
   （僅自動換算依換算清單、手動依時鐘時間）。
-- **git 已提交至 `V1.6.0`**（含 §12 的 11.31 現行版本：出勤時段「最大空檔旋轉」排序）。
-- **目前 working tree 尚未提交**——本次對話的客人模式精修（§12 的 **11.32–11.35**，`app.toml` 尚未 bump）：
-  - `frontend/desktop/src/views/SpaBoardView.vue` — 看板垂直捲軸＋多幹部頁頂顯示（11.32／11.35）。
-  - `frontend/desktop/src/views/CardDetailView.vue` — 簡介/心得文字框 `v-autogrow`（11.33）。
-  - `frontend/desktop/src/views/SpaListView.vue` — 養身館拖曳排序＋插入提示、多幹部編輯表單（11.34／11.35）。
-  - `frontend/desktop/src/api.js` — 新增 `moveSpa`（11.34）。
-  - `backend/models/spa.py`、`backend/models/__init__.py` — 新增 `Spa.position` 與 `SpaStaff` 表（11.34／11.35）。
-  - `backend/routers/customer.py` — `move_spa` 端點、`staff_members` 整批覆蓋、回傳含幹部清單。
-  - `backend/database.py` — 遷移：`spa.position` 回填、`spastaff` 搬遷後移除 `spa.staff`。
-  - ⚠ 此批**含資料庫結構與後端／端點變更**（非純前端）：改碼後**需重啟後端**，首次啟動 `_migrate()` 會自動遷移既有 DB（已驗證遷移與資料保留）。
-- 開發驗證輔助：曾用臨時 `preview_server.py`(8030) 做不干擾使用者 8000 的預覽；該檔已不存在，
-  `.claude/launch.json` 中指向它的 `ahhouch-preview` 壞設定已移除（§12 的 11.17），並改提供
-  `ahhouch-frontend`(Vite dev、5173) 供前端預覽。
+- **git 已提交至 `V2.0.0`**（含 §12 的 11.31「最大空檔旋轉」排序，以及 11.32–11.35 的客人端看板/簡介/養身館精修；版次由使用者以 `app.toml` 控管）。
+- **目前 working tree 尚未提交**——本次對話的**系統拆分：移除客人系統、原「店家」更名為「幹部」（cadre）**（§12 的 **11.36**）。涉及前後端全區、資料庫結構（表／欄位更名＋整表移除客人表）與前後端檔名變更：
+  - 後端：刪 `routers/customer.py` 與客人 6 模型；`store.py`→`cadre.py`（`/api/cadre`、`CadreCard*`、表 `cadrecard*`、欄 `cadre_card_id`）；`config.py` 移除客人預設資料；`database.py` 新增 `_migrate_legacy_split()`。
+  - 前端：刪 `Spa*`/`CardDetail` views；`StoreNav`→`CadreNav`、`StoreCard*View`→`CadreCard*View`；`router.js` 改 `/cadre/*`（`/` 導向 `cadre-list`）；`App.vue` 移除「客人／店家」切換鈕；`api.js` 移除客人方法、店家方法改 `cadre`。
+  - ⚠ **含資料庫結構與後端變更**：改碼後**需重啟後端**，首次啟動 `_migrate_legacy_split()`（在 `create_all` 前）自動遷移既有 DB（已驗證遷移與資料保留；備份於 `DATA/ahhouch.db.bak-before-cadre-split`）。
+  - **GitHub**：儲存庫已確認為 `FatPigDash/AhhOuch_Manager`（private），本機 `origin` remote 亦正確指向，**無需改名**。
+- 開發驗證輔助：`preview_server.py`(8030，獨立 `.preview_data`，不干擾使用者 8000) 供不破壞使用者資料的預覽；`.claude/launch.json` 提供 `ahhouch`(8000)／`ahhouch-frontend`(Vite 5173)／`ahhouch-preview`(8030) 三組設定。
 
 ## 9. 待辦／待確認（不阻擋現況）
 
@@ -303,6 +298,7 @@ python build.py
 > - 11.18 / 11.19 / 11.20 → M6（社群發布）
 > - 11.26 / 11.27 → M4＋M6（卡片自動發布內容選擇、名字超連結；亦影響 M5 班表發布）
 > - 11.8 / 11.17 → 開發環境（Vite 代理、README、預覽設定）
+> - 11.36 → 架構拆分（移除客人系統、店家→幹部更名；影響全專案後端／前端／資料庫）
 >
 > 讀法：先看 §5 里程碑的「↳」指引找到對應條目，即可掌握該功能的**最新實際行為**。
 
@@ -714,3 +710,40 @@ python build.py
 - **前端**：`SpaListView.vue` 編輯表單改為可多列的幹部清單，每位幹部分兩行——第一行「幹部名稱＋輸入框」、第二行「聯絡資訊＋輸入框」（兩輸入框提示詞皆「選填」），含「＋ 新增幹部」與每列移除 ✕；卡片顯示逐位列出 `👤 名字．聯絡資訊`。`SpaBoardView.vue` 看板頁頂同步改為列出多位幹部與聯絡資訊。
 
 **驗證**（dev server 實機）：遷移後 `spa.staff` 欄位移除、`spastaff` 表建立、舊幹部「nty」自動搬入；後端可多筆新增（含聯絡資訊、UTF-8 正確）、空白名稱略過、省略時不更動；前端端到端：編輯→既有幹部預填→新增第二位→儲存→列表與看板頁皆正確顯示兩位幹部與聯絡資訊；編輯表單兩輸入框各為「標籤＋輸入框」同一行、兩行上下排列。測試資料已還原。
+
+### 2026-06-23 — 系統拆分：移除客人系統、原「店家」更名為「幹部」（全專案架構調整）
+
+依 [`AhhOuch 多人使用需求.md`](./AhhOuch%20多人使用需求.md) 的拆分方向（為營利把「客人」系統獨立成另一套免費／付費產品），**本專案資料夾自此只保留原「店家」系統，並全面更名為「幹部」**（英文識別字＝`cadre`），客人系統整組移除。使用者定案：①更名做到底——程式碼識別字／API 路徑／資料庫表名一起改；②客人系統的資料表一併刪除。
+
+> ⚠ 本批**大幅改動資料庫結構（表／欄位更名＋整表移除）、後端碼、API 路徑與前後端檔名**。改碼後**需重啟後端**，首次啟動由 `database.py` 的 `_migrate_legacy_split()` 自動遷移既有 DB（**在 `create_all` 之前**執行）。遷移前已備份 `DATA/ahhouch.db` → `DATA/ahhouch.db.bak-before-cadre-split`。
+
+#### 11.36 移除客人系統、店家→幹部全面更名（backend 全區／frontend 全區／database 遷移）
+
+**移除（客人系統）**：
+- 後端：刪除 `routers/customer.py` 與 6 個客人模型 `models/{board,card,image,review,spa,template}.py`。
+- 前端：刪除 `views/{SpaListView,SpaBoardView,CardDetailView}.vue`。
+- `api.js` 移除所有 `/api/customer/*` 方法；`config.py` 移除客人專用的 `DEFAULT_BOARDS`、`DEFAULT_RATING_ITEMS`。
+- `database.py` 移除 `_seed_defaults`（植入預設評分模板）與客人相關的 `_DROP_COLUMNS`／`_COLUMN_MIGRATIONS` 項目。
+
+**更名（店家 → 幹部／cadre）**：
+- 模型（`models/cadre.py`，原 `store.py`）：`StoreCard→CadreCard`、`StoreCardImage→CadreCardImage`；資料表 `storecard→cadrecard`、`storecardimage→cadrecardimage`；外鍵欄位 `store_card_id→cadre_card_id`。`models/schedule.py` 的 `ScheduleEntry.store_card_id→cadre_card_id`（FK 指向 `cadrecard.id`）。`models/__init__.py` 同步更新匯出。
+- 路由（`routers/cadre.py`，原 `store.py`）：前綴 `/api/store→/api/cadre`、`tags=["cadre"]`、內部 `StoreCard*` 識別字全面改 `CadreCard*`。`main.py` 改 `include_router(cadre.router)`、移除 `customer` 匯入。
+- 前端：`components/CadreNav.vue`（原 `StoreNav.vue`）、`views/CadreCardListView.vue`／`CadreCardDetailView.vue`（原 `StoreCard*View.vue`）；`router.js` 路由改 `/cadre/*`、route name `store-*→cadre-*`、`/` 改 `redirect` 到 `cadre-list`；`api.js` 的 `*StoreCard*` 方法改 `*CadreCard*`、URL 改 `/api/cadre/*`、`addEntry` body 改 `cadre_card_id`。`ScheduleEditView.vue` 的 `storeCards→cadreCards`、`e.store_card_id→e.cadre_card_id`。
+- **移除頂部「客人／店家」角色切換鈕**（`App.vue`）：只剩單一系統，頁首僅留品牌字樣，`/` 直接進幹部資訊卡片列表。
+- `README.md` 改寫為單一「幹部」系統說明。
+
+**資料庫遷移**（`database.py`，新結構）：
+- 新增 `_migrate_legacy_split()`，**必須在 `create_all` 之前**執行——否則 `create_all` 會先建一張空的 `cadrecard`，使後續「`storecard` 更名為 `cadrecard`」因目標已存在而失敗：
+  - `_TABLE_RENAMES`：`storecard→cadrecard`、`storecardimage→cadrecardimage`（來源在、目標不在時才更名，可重複執行）。
+  - `_COLUMN_RENAMES`：`cadrecardimage`／`scheduleentry` 的 `store_card_id→cadre_card_id`。
+  - `_DROP_TABLES`：移除客人殘留表 `cardimage, cardreview, reviewscore, customercard, board, spastaff, spa, ratingtemplateitem, ratingtemplate`。
+- `_migrate_columns()`（原 `_migrate` 的補欄位部分）改於更名後執行，僅保留 `cadrecard.info_link`、`schedule.date／footer` 的 ADD COLUMN 防呆。`_cleanup_legacy_data()`（清 LINE 目標）維持。
+- **既有幹部資料完整保留**（DB 副本驗證：原 `storecard` 2 筆→`cadrecard` 2 筆、`storecardimage` 1 筆、`scheduleentry` 2 筆皆保留並換欄名；客人表全數刪除）。
+
+**驗證**（三段）：
+- 後端：DB 副本跑遷移 → 表名／欄名正確、客人表已刪、資料筆數保留；`TestClient` 對 `/api/cadre/cards`、`/schedules`、`/publish/targets`、`/text-templates` 皆回 `200`、卡片數＝2。
+- 前端：`npm run build` 成功（44 模組轉換）。
+- 瀏覽器（`preview_server.py` 8030，以真實 DB 副本作 `.preview_data/preview.db`）：首頁無角色切換鈕、`/`→`#/cadre`、資訊卡片/班表/發布頁皆正常、**主控台 0 錯誤、無失敗請求**；班表出勤以 `cadre_card_id` 連動正確（兩張卡片皆顯示 ✓ 出勤、entries 正確解析名字與時段）。
+- 正式 `DATA/ahhouch.db` 將於下次正式啟動時自動套用同一遷移（已備份）。
+
+**GitHub**：儲存庫名稱經 API 認證查詢確認已是 `FatPigDash/AhhOuch_Manager`（private），本機 `origin` remote 亦正確指向，**無需改名**。
