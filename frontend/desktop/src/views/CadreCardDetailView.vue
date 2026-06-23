@@ -1,11 +1,40 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import html2canvas from 'html2canvas'
 import { api } from '../api'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
 const router = useRouter()
+
+// 文字框自動長高：高度貼齊內容、完整顯示，移除垂直捲軸。
+function resizeTextarea(el) {
+  // 量測前先把高度歸零會讓文字框瞬間縮短，導致頁面捲動位置被瀏覽器夾回頂端；
+  // 先記住目前捲動位置，調整完高度後立刻還原，避免編輯時畫面跳到上方。
+  const x = window.scrollX
+  const y = window.scrollY
+  el.style.height = 'auto'
+  // scrollHeight 不含邊框；box-sizing: border-box 時需補上邊框，否則內容會被裁掉幾像素。
+  const s = getComputedStyle(el)
+  const border = s.boxSizing === 'border-box'
+    ? parseFloat(s.borderTopWidth) + parseFloat(s.borderBottomWidth)
+    : 0
+  el.style.height = `${el.scrollHeight + border}px`
+  el._lastResizeValue = el.value
+  window.scrollTo(x, y)
+}
+const vAutoresize = {
+  mounted(el) {
+    el.addEventListener('input', () => resizeTextarea(el))
+    nextTick(() => resizeTextarea(el))
+  },
+  updated(el) {
+    // 只有「這個欄位自己的內容」真的改變時才重新量高。
+    // 否則編輯其他欄位（如簡短介紹、資訊訊息連結）也會觸發 updated，
+    // 連帶把較高的完整介紹框瞬間縮回去再撐開，造成畫面往上跳。
+    if (el.value !== el._lastResizeValue) nextTick(() => resizeTextarea(el))
+  },
+}
 
 const card = ref(null)
 const saved = ref(null)   // 最後一次已儲存的文字欄位快照，用於判斷是否有未儲存變更
@@ -264,6 +293,7 @@ onBeforeUnmount(() => {
       <button class="back" @click="goBack">← 返回列表</button>
       <input class="title-input" v-model="card.name" />
     </div>
+    <p class="page-subtitle">美容師資訊編輯頁面</p>
     <p v-if="error" class="error">{{ error }}</p>
 
     <div class="panel">
@@ -287,11 +317,11 @@ onBeforeUnmount(() => {
 
         <label class="field">
           <span>完整介紹</span>
-          <textarea v-model="card.full_intro" rows="4"></textarea>
+          <textarea v-model="card.full_intro" v-autoresize rows="4"></textarea>
         </label>
         <label class="field">
           <span>簡短介紹</span>
-          <textarea v-model="card.short_intro" rows="2"></textarea>
+          <textarea v-model="card.short_intro" v-autoresize rows="2"></textarea>
         </label>
         <label class="field">
           <span>資訊訊息連結（自動發布後自動填入，可手動修改）</span>
@@ -428,6 +458,7 @@ onBeforeUnmount(() => {
 .back { background: #e4e7eb; border: none; border-radius: 8px; padding: 6px 12px; color: #334e68; }
 .title-input { flex: 1; font-size: 1.4rem; font-weight: 700; border: 1px solid transparent; border-radius: 8px; padding: 4px 8px; }
 .title-input:hover, .title-input:focus { border-color: #cbd2d9; outline: none; }
+.page-subtitle { margin: 4px 0 0; color: #627d98; font-size: 0.9rem; }
 .publish-btn { white-space: nowrap; }
 .action-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
 .action-right { display: flex; align-items: center; gap: 10px; }
@@ -451,7 +482,7 @@ onBeforeUnmount(() => {
 .img-empty { color: #9fb3c8; font-size: 0.85rem; padding: 8px 0; }
 .img-add { display: flex; align-items: center; gap: 10px; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; color: #486581; }
-.field textarea { padding: 8px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.95rem; color: #1f2933; resize: vertical; }
+.field textarea { padding: 8px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.95rem; color: #1f2933; resize: none; overflow-y: hidden; line-height: 1.5; }
 .field input { padding: 8px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.95rem; color: #1f2933; }
 
 .modal-backdrop { position: fixed; inset: 0; background: rgba(16,42,67,0.45); display: flex; align-items: center; justify-content: center; z-index: 50; }
