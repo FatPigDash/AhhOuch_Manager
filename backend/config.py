@@ -47,25 +47,3 @@ def ensure_data_dirs() -> None:
 
 def database_url() -> str:
     return f"sqlite:///{DB_PATH.as_posix()}"
-
-
-# --- 預設資料 ---
-# 建立養身館時自動產生的五個看板，由左至右 (C6)。
-DEFAULT_BOARDS: tuple[str, ...] = (
-    "觀望",
-    "體驗一次",
-    "已體驗超過一次",
-    "不會再體驗",
-    "已離職",
-)
-
-# 預設評分模板的項目 (C18)。
-DEFAULT_RATING_ITEMS: tuple[str, ...] = (
-    "外表",
-    "身材",
-    "按摩",
-    "過程互動",
-    "服務",
-    "卸甲",
-    "回沖",
-)

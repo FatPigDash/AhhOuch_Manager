@@ -2,7 +2,7 @@
 import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api";
-import StoreNav from "../components/StoreNav.vue";
+import CadreNav from "../components/CadreNav.vue";
 
 const router = useRouter();
 const cards = ref([]);
@@ -11,7 +11,7 @@ const error = ref("");
 
 async function load() {
   try {
-    cards.value = await api.listStoreCards();
+    cards.value = await api.listCadreCards();
   } catch (e) {
     error.value = e.message;
   }
@@ -20,7 +20,7 @@ async function addCard() {
   const name = newName.value.trim();
   if (!name) return;
   try {
-    await api.createStoreCard(name);
+    await api.createCadreCard(name);
     newName.value = "";
     await load();
   } catch (e) {
@@ -30,21 +30,21 @@ async function addCard() {
 async function removeCard(card) {
   if (!confirm(`刪除資訊卡片「${card.name}」？`)) return;
   try {
-    await api.deleteStoreCard(card.id);
+    await api.deleteCadreCard(card.id);
     await load();
   } catch (e) {
     error.value = e.message;
   }
 }
 function open(card) {
-  router.push({ name: "store-card", params: { id: card.id } });
+  router.push({ name: "cadre-card", params: { id: card.id } });
 }
 onMounted(load);
 </script>
 
 <template>
   <section>
-    <StoreNav />
+    <CadreNav />
     <h1>美容師資訊卡片</h1>
     <p v-if="error" class="error">{{ error }}</p>
 

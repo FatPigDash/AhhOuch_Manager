@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config, version
 from .database import init_db
-from .routers import customer, publish, store
+from .routers import cadre, publish
 
 
 @asynccontextmanager
@@ -26,8 +26,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=version.app_name(), version=version.version(), lifespan=lifespan)
 
-app.include_router(customer.router)
-app.include_router(store.router)
+app.include_router(cadre.router)
 app.include_router(publish.router)
 
 

@@ -82,18 +82,18 @@ function snapshot() {
 
 async function load() {
   try {
-    card.value = await api.getStoreCard(props.id)
+    card.value = await api.getCadreCard(props.id)
     snapshot()
   } catch (e) { error.value = e.message }
 }
-function goBack() { router.push({ name: 'store-list' }) }
+function goBack() { router.push({ name: 'cadre-list' }) }
 
 // 儲存：把目前文字欄位一次寫回後端。
 async function save() {
   const name = card.value.name.trim()
   if (!name) { error.value = '名字不可空白'; return }
   try {
-    await api.updateStoreCard(props.id, {
+    await api.updateCadreCard(props.id, {
       name,
       full_intro: card.value.full_intro,
       short_intro: card.value.short_intro,
@@ -114,14 +114,14 @@ function cancel() { goBack() }
 // 圖片為即時存檔；只刷新圖片欄位，保留尚未儲存的文字編輯。
 async function reloadImages() {
   try {
-    const fresh = await api.getStoreCard(props.id)
+    const fresh = await api.getCadreCard(props.id)
     card.value.images = fresh.images
     card.value.cover_image = fresh.cover_image
   } catch (e) { error.value = e.message }
 }
 async function onFiles(e) {
   for (const file of e.target.files) {
-    try { await api.uploadStoreImage(props.id, file) } catch (err) { error.value = err.message }
+    try { await api.uploadCadreImage(props.id, file) } catch (err) { error.value = err.message }
   }
   e.target.value = ''
   await reloadImages()
@@ -132,7 +132,7 @@ function onPaste(e) {
     if (item.type.startsWith('image/')) {
       const reader = new FileReader()
       reader.onload = async () => {
-        try { await api.pasteStoreImage(props.id, reader.result); await reloadImages() }
+        try { await api.pasteCadreImage(props.id, reader.result); await reloadImages() }
         catch (err) { error.value = err.message }
       }
       reader.readAsDataURL(item.getAsFile())
@@ -142,11 +142,11 @@ function onPaste(e) {
   }
 }
 async function setCover(img) {
-  try { await api.setStoreCover(img.id); await reloadImages() } catch (e) { error.value = e.message }
+  try { await api.setCadreCover(img.id); await reloadImages() } catch (e) { error.value = e.message }
 }
 async function removeImage(img) {
   if (!confirm('刪除這張圖片？')) return
-  try { await api.deleteStoreImage(img.id); await reloadImages() } catch (e) { error.value = e.message }
+  try { await api.deleteCadreImage(img.id); await reloadImages() } catch (e) { error.value = e.message }
 }
 
 // --- 發布 (S5) ---

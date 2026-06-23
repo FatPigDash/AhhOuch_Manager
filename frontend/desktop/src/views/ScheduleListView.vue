@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
-import StoreNav from '../components/StoreNav.vue'
+import CadreNav from '../components/CadreNav.vue'
 
 const router = useRouter()
 const schedules = ref([])
@@ -30,7 +30,7 @@ onMounted(load)
 
 <template>
   <section>
-    <StoreNav />
+    <CadreNav />
     <div class="head">
       <h1>班表</h1>
       <button class="primary" @click="addSchedule">＋ 新增班表</button>

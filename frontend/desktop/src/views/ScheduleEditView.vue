@@ -9,7 +9,7 @@ const props = defineProps({ id: { type: [String, Number], required: true } })
 const router = useRouter()
 
 const schedule = ref(null)
-const storeCards = ref([])
+const cadreCards = ref([])
 const error = ref('')
 
 const manualInput = reactive({})   // { [entryId]: 輸入字串 }
@@ -46,7 +46,7 @@ async function restoreShiftGrids() {
   }
 }
 async function loadCards() {
-  try { storeCards.value = await api.listStoreCards() } catch (e) { error.value = e.message }
+  try { cadreCards.value = await api.listCadreCards() } catch (e) { error.value = e.message }
 }
 function goBack() { router.push({ name: 'schedule-list' }) }
 
@@ -86,10 +86,10 @@ function saveDate() {
 
 // 出勤人員 (S7/S8)
 function isAttending(cardId) {
-  return schedule.value.entries.some((e) => e.store_card_id === cardId)
+  return schedule.value.entries.some((e) => e.cadre_card_id === cardId)
 }
 async function toggleAttend(card) {
-  const entry = schedule.value.entries.find((e) => e.store_card_id === card.id)
+  const entry = schedule.value.entries.find((e) => e.cadre_card_id === card.id)
   try {
     if (entry) await api.deleteEntry(entry.id)
     else await api.addEntry(schedule.value.id, card.id)
@@ -251,10 +251,10 @@ onMounted(() => { load(); loadCards() })
     <!-- 出勤欄位 (S7) -->
     <div class="panel">
       <h2>出勤人員</h2>
-      <p v-if="storeCards.length === 0" class="hint">尚無資訊卡片，請先到「資訊卡片」建立。</p>
+      <p v-if="cadreCards.length === 0" class="hint">尚無資訊卡片，請先到「資訊卡片」建立。</p>
       <div class="attend-list">
         <button
-          v-for="card in storeCards"
+          v-for="card in cadreCards"
           :key="card.id"
           class="attend-pill"
           :class="{ on: isAttending(card.id) }"

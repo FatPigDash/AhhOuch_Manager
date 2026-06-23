@@ -1,7 +1,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '../api'
-import StoreNav from '../components/StoreNav.vue'
+import CadreNav from '../components/CadreNav.vue'
 
 const targets = ref([])
 const platforms = ref([])
@@ -54,7 +54,7 @@ onMounted(load)
 
 <template>
   <section>
-    <StoreNav />
+    <CadreNav />
     <h1>發布設定</h1>
     <p v-if="error" class="error">{{ error }}</p>
     <p class="hint">
