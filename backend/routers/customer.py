@@ -22,7 +22,6 @@ from ..models import (
     RatingTemplateItem,
     ReviewScore,
     Spa,
-    SpaStaff,
 )
 from ..services import image_service
 
@@ -35,25 +34,16 @@ router = APIRouter(prefix="/api/customer", tags=["customer"])
 from pydantic import BaseModel
 
 
-class StaffMemberIn(BaseModel):
-    name: str
-    contact: str = ""  # 聯絡資訊
-
-
 class SpaCreate(BaseModel):
     name: str
     address: str = ""
+    staff: str = ""
 
 
 class SpaUpdate(BaseModel):
     name: str | None = None
     address: str | None = None
-    # 提供時整批覆蓋幹部清單（含聯絡資訊）；None 表示不更動 (C2)
-    staff_members: list[StaffMemberIn] | None = None
-
-
-class SpaMove(BaseModel):
-    position: int  # 在養身館列表中的新排序索引（0 起算）
+    staff: str | None = None
 
 
 class BoardCreate(BaseModel):
@@ -186,37 +176,17 @@ def _next_position(session: Session, model, **filters) -> int:
 # --------------------------------------------------------------------------
 # 養身館 (C1/C2/C3)
 # --------------------------------------------------------------------------
-def _staff_members(session: Session, spa_id: int) -> list[dict]:
-    """取得某養身館的幹部清單（含聯絡資訊），依顯示順序 (C2)。"""
-    members = session.exec(
-        select(SpaStaff)
-        .where(SpaStaff.spa_id == spa_id)
-        .order_by(SpaStaff.position, SpaStaff.id)
-    ).all()
-    return [m.model_dump() for m in members]
-
-
-def _spa_with_staff(session: Session, spa: Spa) -> dict:
-    return {**spa.model_dump(), "staff_members": _staff_members(session, spa.id)}
-
-
 @router.get("/spas")
-def list_spas(session: Session = Depends(get_session)) -> list[dict]:
-    # 依手動排序位置；位置相同時以建立時間為次序 (C3)
-    spas = session.exec(select(Spa).order_by(Spa.position, Spa.created_at)).all()
-    return [_spa_with_staff(session, s) for s in spas]
+def list_spas(session: Session = Depends(get_session)) -> list[Spa]:
+    return session.exec(select(Spa).order_by(Spa.created_at)).all()
 
 
 @router.post("/spas", status_code=201)
-def create_spa(data: SpaCreate, session: Session = Depends(get_session)) -> dict:
+def create_spa(data: SpaCreate, session: Session = Depends(get_session)) -> Spa:
     name = data.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="養身館名稱不可空白")
-    spa = Spa(
-        name=name,
-        address=data.address,
-        position=_next_position(session, Spa),  # 新養身館排在列表最後
-    )
+    spa = Spa(name=name, address=data.address, staff=data.staff)
     session.add(spa)
     session.commit()
     session.refresh(spa)
@@ -226,7 +196,7 @@ def create_spa(data: SpaCreate, session: Session = Depends(get_session)) -> dict
         session.add(Board(spa_id=spa.id, name=board_name, position=pos))
     session.commit()
     session.refresh(spa)  # 第二次 commit 後物件會過期，重新載入再回傳
-    return _spa_with_staff(session, spa)
+    return spa
 
 
 @router.get("/spas/{spa_id}")
@@ -252,17 +222,13 @@ def get_spa(spa_id: int, session: Session = Depends(get_session)) -> dict:
         ]
         board_list.append({**board.model_dump(), "cards": card_dicts})
 
-    return {
-        **spa.model_dump(),
-        "staff_members": _staff_members(session, spa_id),
-        "boards": board_list,
-    }
+    return {**spa.model_dump(), "boards": board_list}
 
 
 @router.patch("/spas/{spa_id}")
 def update_spa(
     spa_id: int, data: SpaUpdate, session: Session = Depends(get_session)
-) -> dict:
+) -> Spa:
     spa = _get_or_404(session, Spa, spa_id, "養身館")
     if data.name is not None:
         new_name = data.name.strip()
@@ -271,38 +237,18 @@ def update_spa(
         spa.name = new_name
     if data.address is not None:
         spa.address = data.address
+    if data.staff is not None:
+        spa.staff = data.staff
     session.add(spa)
-
-    # 整批覆蓋幹部清單：先清掉舊的，再依序建立新的（空白名稱略過）(C2)
-    if data.staff_members is not None:
-        for old in session.exec(
-            select(SpaStaff).where(SpaStaff.spa_id == spa_id)
-        ).all():
-            session.delete(old)
-        pos = 0
-        for m in data.staff_members:
-            name = m.name.strip()
-            if not name:
-                continue
-            session.add(
-                SpaStaff(
-                    spa_id=spa_id,
-                    name=name,
-                    contact=m.contact.strip(),
-                    position=pos,
-                )
-            )
-            pos += 1
-
     session.commit()
     session.refresh(spa)
-    return _spa_with_staff(session, spa)
+    return spa
 
 
 @router.delete("/spas/{spa_id}", status_code=204)
 def delete_spa(spa_id: int, session: Session = Depends(get_session)) -> None:
     spa = _get_or_404(session, Spa, spa_id, "養身館")
-    # 手動串接刪除：卡片 → 看板 → 幹部 → 養身館
+    # 手動串接刪除：卡片 → 看板 → 養身館
     boards = session.exec(select(Board).where(Board.spa_id == spa_id)).all()
     for board in boards:
         cards = session.exec(
@@ -311,35 +257,8 @@ def delete_spa(spa_id: int, session: Session = Depends(get_session)) -> None:
         for card in cards:
             _delete_card_cascade(session, card)
         session.delete(board)
-    for member in session.exec(
-        select(SpaStaff).where(SpaStaff.spa_id == spa_id)
-    ).all():
-        session.delete(member)
     session.delete(spa)
     session.commit()
-
-
-@router.post("/spas/{spa_id}/move")
-def move_spa(
-    spa_id: int, data: SpaMove, session: Session = Depends(get_session)
-) -> dict:
-    """調整養身館在列表中的順序 (C3)。"""
-    spa = _get_or_404(session, Spa, spa_id, "養身館")
-    siblings = [
-        s
-        for s in session.exec(
-            select(Spa).order_by(Spa.position, Spa.created_at)
-        ).all()
-        if s.id != spa_id
-    ]
-    pos = max(0, min(data.position, len(siblings)))
-    siblings.insert(pos, spa)
-    for i, s in enumerate(siblings):
-        if s.position != i:
-            s.position = i
-            session.add(s)
-    session.commit()
-    return {"ok": True}
 
 
 # --------------------------------------------------------------------------
