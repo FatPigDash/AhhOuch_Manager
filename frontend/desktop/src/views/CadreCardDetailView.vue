@@ -523,6 +523,17 @@ onBeforeUnmount(() => {
 button.ghost { background: #e4e7eb; color: #334e68; }
 button.primary { background: #2680c2; color: #fff; }
 
+@media (max-width: 640px) {
+  .detail { max-width: 100%; }
+  .page-head { gap: 8px; }
+  .title-input { font-size: 1.1rem; min-width: 0; }
+  .img-add { flex-wrap: wrap; }
+  .img-add .hint { width: 100%; }
+  .action-bar { flex-wrap: wrap; gap: 10px; }
+  .action-right { flex-wrap: wrap; }
+  .action-bar button { flex: 1; min-width: 80px; }
+}
+
 .lightbox-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.82); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .lightbox-box { position: relative; max-width: 90vw; max-height: 90vh; }
 .lightbox-box img { display: block; max-width: 90vw; max-height: 90vh; border-radius: 8px; object-fit: contain; }

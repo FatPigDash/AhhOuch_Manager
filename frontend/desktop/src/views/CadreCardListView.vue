@@ -90,11 +90,13 @@ h1 {
 }
 .add-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 24px;
 }
 .add-bar input {
   flex: 1;
+  min-width: 160px;
   max-width: 360px;
   padding: 8px 12px;
   border: 1px solid #cbd2d9;
@@ -106,6 +108,7 @@ h1 {
   border-radius: 8px;
   background: #2680c2;
   color: #fff;
+  white-space: nowrap;
 }
 .grid {
   list-style: none;

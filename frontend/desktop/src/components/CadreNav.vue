@@ -11,7 +11,7 @@
 </template>
 
 <style scoped>
-.cadre-nav { display: flex; gap: 8px; margin-bottom: 18px; }
+.cadre-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .tab {
   padding: 6px 16px;
   border-radius: 8px;
