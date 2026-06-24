@@ -36,6 +36,8 @@
 ```powershell
 git add .
 git commit -m "說明這次改了什麼"
+
+用這個指令其他人就會套用更新版本
 git push origin main
 ```
 
