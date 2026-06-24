@@ -8,8 +8,8 @@
 > - [`AhhOuch 開發計畫.md`](./AhhOuch%20開發計畫.md) — 開發前的總體規劃與需求對照表（修訂歷程已移至本報告 §12）
 > - 版本修訂紀錄（依版次）— 已整合於本報告 §5 附錄（原獨立檔 `CHANGELOG.md` 已移除）
 >
-> 報告產生日期：2026-06-20（最後更新：2026-06-23，§12 增列 11.36：**系統拆分——移除客人系統、原「店家」更名為「幹部」(cadre)**；前次為 11.32–11.35 客人端精修）
-> ｜ 對應版本：app.toml 1.7.0／git V2.0.0（自 §5 的 0.6.0 後持續精修發版，使用者以 `app.toml` 控版次） ｜ 狀態：**M0–M8 全部完成；2026-06-23 起拆分為「幹部」單一系統（客人系統已移除）**
+> 報告產生日期：2026-06-20（最後更新：2026-06-25，§12 增列 11.38–11.39：**架構轉型 — FastAPI+exe → Local-First PWA（IndexedDB 資料層 + GitHub Pages 部署）**；前次為 11.37 美容師資訊編輯頁 UX 精修）
+> ｜ 對應版本：app.toml 1.7.0／git V2.0.0→M2 完成 ｜ 狀態：**架構轉型進行中：M1（資料層移植）✅、M2（PWA 化 + GitHub Pages）✅、M3–M6 待開發**
 
 ---
 
@@ -217,51 +217,39 @@ AhhOuch_Edit/
 
 ## 8. 目前狀態
 
-- 版本 **1.6.0**（使用者持續用 `app.toml` 控版次；會自行 prettier 格式化與 git commit）。
-  自 §5 完成 M0–M8（0.6.0）後，店家系統與社群發布持續精修並多次發版：
-  git **V0.6.0 → V1.0.0 → V1.1.0「店家系統」→ V1.2.0 → V1.3.0 → V1.4.0 → V1.5.0**。
-- **git 已提交至 `V1.5.0`**，其中**已含** §12 的 **11.26**（卡片自動發布複選內容＋發圖）、
-  **11.27**（班表名字超連結）、**11.28**（班表日期欄位）、**11.29**（班表結語欄位）、
-  **11.30**（標題／結語文字模板），以及 **11.31**（出勤時段時間序排列）的早期版本
-  （僅自動換算依換算清單、手動依時鐘時間）。
-- **git 已提交至 `V2.0.0`**（含 §12 的 11.31「最大空檔旋轉」排序，以及 11.32–11.35 的客人端看板/簡介/養身館精修；版次由使用者以 `app.toml` 控管）。
-- **目前 working tree 尚未提交**——本次對話的**系統拆分：移除客人系統、原「店家」更名為「幹部」（cadre）**（§12 的 **11.36**）。涉及前後端全區、資料庫結構（表／欄位更名＋整表移除客人表）與前後端檔名變更：
-  - 後端：刪 `routers/customer.py` 與客人 6 模型；`store.py`→`cadre.py`（`/api/cadre`、`CadreCard*`、表 `cadrecard*`、欄 `cadre_card_id`）；`config.py` 移除客人預設資料；`database.py` 新增 `_migrate_legacy_split()`。
-  - 前端：刪 `Spa*`/`CardDetail` views；`StoreNav`→`CadreNav`、`StoreCard*View`→`CadreCard*View`；`router.js` 改 `/cadre/*`（`/` 導向 `cadre-list`）；`App.vue` 移除「客人／店家」切換鈕；`api.js` 移除客人方法、店家方法改 `cadre`。
-  - ⚠ **含資料庫結構與後端變更**：改碼後**需重啟後端**，首次啟動 `_migrate_legacy_split()`（在 `create_all` 前）自動遷移既有 DB（已驗證遷移與資料保留；備份於 `DATA/ahhouch.db.bak-before-cadre-split`）。
-  - **GitHub**：儲存庫已確認為 `FatPigDash/AhhOuch_Manager`（private），本機 `origin` remote 亦正確指向，**無需改名**。
-- 開發驗證輔助：`preview_server.py`(8030，獨立 `.preview_data`，不干擾使用者 8000) 供不破壞使用者資料的預覽；`.claude/launch.json` 提供 `ahhouch`(8000)／`ahhouch-frontend`(Vite 5173)／`ahhouch-preview`(8030) 三組設定。
+**架構轉型進行中（2026-06-25）**：已完成 M1（IndexedDB 資料層）＋ M2（PWA 化 + GitHub Pages），前端 App 已可完全離線運作、並部署至 `https://FatPigDash.github.io/AhhOuch_Manager/`。
 
-## 9. 待辦／待確認（不阻擋現況）
+- **技術架構**：已從「FastAPI + SQLite + exe」轉為「Vue 3 PWA + IndexedDB + GitHub Pages」。後端（FastAPI）仍存在於 repo，但前端已完全不依賴它。
+- **git 歷程**：V0.6.0 → V1.0.0 → V1.5.0 → V2.0.0（系統拆分）→ M1（IndexedDB）→ M2（PWA + GitHub Pages）→ 修正 CI（package.json 漏 commit）。
+- **部署**：GitHub Actions workflow（`.github/workflows/deploy.yml`）自動 build + deploy，push main 後 2-3 分鐘生效。Repo 已改為 public（GitHub Pages 免費方案需要）。
+- **本機開發**：`cd frontend/desktop && npm run dev`（Vite HMR，存檔即更新，不需 `npm run build`）。
+- **Telegram 自動發布**：已從前端移除（M1 清理）；M4 改用 Web Share API 接手發布功能。
 
-1. **社群自動發布實際串接**：平台已定為 **Telegram(預設)＋X**（LINE 已移除，§12 的 11.18）。
-   Telegram 可實際推送**文字＋圖片（單張 sendPhoto／多張相簿，§12 的 11.26）**，使用者申請 Bot、
-   填金鑰+群組 ID 即可；**X 自動發送尚未實作**（發文需 OAuth 授權，目前僅列為選項、選用時手動複製
-   貼上），日後若要自動發 X 需補 OAuth 串接（§9-1）。
-   - **班表名字超連結（§12 的 11.27）**只在「自動發布」訊息有效，且群組須為**超級群組/公開群組**
-     （基本群組無訊息連結）。實際生效需使用者填真權杖、且該群組支援「複製訊息連結」。
-2. **資料備份／匯出匯入**：尚未實作（§9-3）。
-3. **班表發布是否需自訂樣式**：目前固定用需求範例格式（§9-4）。
-4. **圖片貼上主要來源**：截圖 vs 複製檔案，兩者皆支援，主要用法待確認（§9-2）。
-5. 多語系（繁中/日/英）相容性整體覆測；日文若改後端 Pillow 產圖需內嵌日文字型。
+## 9. 待辦（依開發計畫里程碑順序）
 
-## 10. 啟動／打包／驗證 速查
+> 架構轉型後，待辦改為依 [`AhhOuch_Manager 幹部系統手機版開發計畫.md`](./AhhOuch_Manager%20幹部系統手機版開發計畫.md) M3–M6 排列。
+
+1. **M3 圖片功能（手機版）**：從手機相簿選圖或拍照（`<input type="file">`）、剪貼簿貼上（Clipboard API）、多圖管理、封面設定、大圖縮圖最佳化；驗證 2000 張容量。
+2. **M4 發布（Web Share API）**：格式化班表／卡片文字，呼叫 `navigator.share()` 傳至 LINE；使用者可選擇是否連同照片發出；驗證 iOS Safari / Android Chrome 相容性並規劃降級方案。
+3. **M5 草稿管理**：班表發布後自動留存草稿；草稿列表；點選草稿進入同款編輯介面修改後再發布。
+4. **M6 備份與收尾**：匯出全部資料（卡片＋圖片＋班表）為備份檔；匯入還原（換機流程）；每月提醒備份；語系相容性（繁中／日／英）整體覆測。
+
+## 10. 啟動／部署 速查
 
 ```powershell
-# 安裝
-pip install -r requirements.txt        # 或雙擊 install.bat
-cd frontend\desktop; npm install
+# 本機開發（Vite HMR，存檔即更新，不需 build）
+cd frontend\desktop
+npm install          # 首次安裝
+npm run dev          # http://localhost:5173
 
-# 方式 A（日常）：後端提供已建置前端 → http://localhost:8000
-cd frontend\desktop; npm run build
-cd ..\..; .\run_dev.bat
+# 部署給幹部（push 後 GitHub Actions 自動 build + deploy，2-3 分鐘生效）
+git push origin main
 
-# 方式 B（前端開發，熱更新 → http://localhost:5173）
-python run.py                          # 終端 1（後端，改碼需手動重啟）
-cd frontend\desktop; npm run dev       # 終端 2（前端）
+# 幹部使用網址
+# https://FatPigDash.github.io/AhhOuch_Manager/
 
-# 打包單一 exe → 打包輸出/AhhOuch_v<版次>.exe
-python build.py
+# 修改版次／名稱（唯一事實來源）
+# 編輯 app.toml → version = "x.x.x"
 ```
 
 ## 11. 給下一個對話的銜接指引
@@ -293,12 +281,14 @@ python build.py
 > - 11.1 / 11.11 / 11.12 / 11.34 → M2（排序與拖曳）
 > - 11.2 / 11.3 / 11.4 / 11.7 / 11.13 / 11.33 → M3（卡片完整內容）
 > - 11.34 / 11.35 → M1（養身館列表排序、多幹部與聯絡資訊，C2/C3）
-> - 11.5 / 11.7 / 11.14 / 11.15 / 11.16 → M4（店家資訊卡片）
+> - 11.5 / 11.7 / 11.14 / 11.15 / 11.16 / 11.37 → M4（店家／幹部資訊卡片；11.37＝美容師資訊編輯頁 UX 精修）
 > - 11.21 / 11.22 / 11.23 / 11.24 / 11.25 / 11.28 / 11.29 / 11.30 / 11.31 → M5（班表）
 > - 11.18 / 11.19 / 11.20 → M6（社群發布）
 > - 11.26 / 11.27 → M4＋M6（卡片自動發布內容選擇、名字超連結；亦影響 M5 班表發布）
 > - 11.8 / 11.17 → 開發環境（Vite 代理、README、預覽設定）
 > - 11.36 → 架構拆分（移除客人系統、店家→幹部更名；影響全專案後端／前端／資料庫）
+> - 11.38 → M1 架構轉型（FastAPI → IndexedDB，Local-First）
+> - 11.39 → M2 PWA 化 + GitHub Pages 自動部署
 >
 > 讀法：先看 §5 里程碑的「↳」指引找到對應條目，即可掌握該功能的**最新實際行為**。
 
@@ -747,3 +737,94 @@ python build.py
 - 正式 `DATA/ahhouch.db` 將於下次正式啟動時自動套用同一遷移（已備份）。
 
 **GitHub**：儲存庫名稱經 API 認證查詢確認已是 `FatPigDash/AhhOuch_Manager`（private），本機 `origin` remote 亦正確指向，**無需改名**。
+
+### 2026-06-25 — 架構轉型：FastAPI+exe → Local-First PWA（M1–M2）
+
+本批為**架構層級的轉型**，將整個幹部系統從「FastAPI 後端 + 集中式 SQLite + PyInstaller exe」改為「Vue 3 PWA + IndexedDB 本機儲存 + GitHub Pages 靜態托管」。依 [`AhhOuch_Manager 幹部系統手機版開發計畫.md`](./AhhOuch_Manager%20幹部系統手機版開發計畫.md) 執行。
+
+> ⚠ 本批**不動後端**（FastAPI 開發者本機仍可用）；**前端全面改為本機優先（Local-First）**，IndexedDB 取代所有 `/api/*` 呼叫。移除了 Telegram 自動發布相關 UI，改由 M4 的 Web Share API 接手（M4 尚未開發）。
+
+#### 11.38 M1：幹部系統資料層移植 — FastAPI → IndexedDB（Local-First）
+
+**目標**：前端 App 完全離線可用，不依賴開發者電腦啟動後端。
+
+**新增 `frontend/desktop/src/db.js`**（IndexedDB 完整資料層）：
+- DB 名 `ahhouch_db` version 1，object stores：`cards`、`images`（index: `by_card`）、`schedules`、`entries`（index: `by_schedule`）、`text_templates`（index: `by_kind`）。
+- 每個操作開獨立 transaction（避免 IndexedDB async/await 自動 commit 問題）；多 store 原子操作用 `txDone(t)` 等待 transaction 完成。
+- 圖片以 Blob 存 IndexedDB，讀取時用 `URL.createObjectURL(blob)` 產生 Object URL 供 `<img src>` 使用。
+- 移植原後端邏輯：`normalizeTime("1830")→"18:30"`、`calcShiftSlots(start)` 8 班次換算、`cardPublishText` / `schedulePublishText` 格式化文字產生。
+
+**改寫 `frontend/desktop/src/api.js`**（全面本機化）：
+- 所有 method 改為呼叫 `db.js`，無任何 `fetch` 呼叫。
+- `meta()` 回傳靜態標題；`shiftSlots()` 呼叫 `db.calcShiftSlots()`。
+- `publishCard` / `publishSchedule` 留空 stub（M4 Web Share API 接手）。
+- 移除：`publishPlatforms`、`listTargets`、`createTarget`、`updateTarget`、`deleteTarget`、`sendPublish`。
+
+**清理前端 UI（移除 Telegram 自動發布相關）**：
+- `CadreNav.vue`：移除「發布設定」tab，只剩「資訊卡片 ｜ 班表」。
+- `router.js`：移除 `publish-settings` 路由；hash 模式保留（GitHub Pages 靜態托管免 rewrite）。
+- `CadreCardDetailView.vue`：移除 Telegram 自動發布 UI（選目標、挑圖、預覽、發送），移除 `info_link` 欄位。
+- `ScheduleEditView.vue`：移除班表自動發布到 Telegram UI。
+- `views/PublishSettingsView.vue`：整檔刪除（發布設定頁不再需要）。
+
+**P0 手機版面修正**（同批）：
+- `CadreNav.vue`：加 `flex-wrap: wrap` 修正 tab 在窄螢幕溢出。
+- `CadreCardDetailView.vue`：加 `@media(max-width:640px)` 修正 action-bar、img-add、title-input。
+- `CadreCardListView.vue`：`.add-bar` 加 `flex-wrap: wrap`，input 加 `min-width`，button 加 `white-space: nowrap`。
+
+**驗證**（Vite dev server 5173，preview_eval）：
+- 頁面載入顯示「AhhOuch_Manager v2.1.0」，只有「資訊卡片 ｜ 班表」兩 tab。
+- IndexedDB 寫入/讀取：建立卡片 #101、#202，`listCards()` 正確回傳兩筆。
+- 重新整理後資料持久保留（IndexedDB 不因重整消失）。
+
+#### 11.39 M2：PWA 化與 GitHub Pages 自動部署
+
+**目標**：幹部可透過手機瀏覽器開啟網址後「加入主畫面」，離線使用；開發者 push 後自動更新。
+
+**PWA 設定（`frontend/desktop/vite.config.js`）**：
+- 加入 `vite-plugin-pwa`（devDependencies）：`registerType: autoUpdate`、`generateSW` 策略、`globPatterns` 快取所有靜態資源（js/css/html/png/svg/woff2）。
+- manifest：`name: AhhOuch_Manager`、`short_name: AhhOuch`、`display: standalone`、`theme_color: #102a43`、`start_url: ./`、`scope: ./`。
+- Build 產出：`dist/manifest.webmanifest` + `dist/sw.js` + `dist/workbox-*.js`，離線可用。
+
+**iOS meta tags（`frontend/desktop/index.html`）**：
+- `apple-mobile-web-app-capable: yes`、`apple-mobile-web-app-status-bar-style: black-translucent`、`apple-mobile-web-app-title: AhhOuch`。
+- `<link rel="apple-touch-icon" href="apple-touch-icon.png">`。
+
+**PWA 圖示（`frontend/desktop/public/`）**：
+- `scripts/create-icons.mjs`：純 Node.js 腳本（無額外套件），產生深藍色（`#102a43`）實心 PNG：`icon-192.png`（192×192）、`icon-512.png`（512×512）、`apple-touch-icon.png`（180×180）。
+
+**GitHub Pages 自動部署（`.github/workflows/deploy.yml`）**：
+- `on: push: branches: [main]`；permissions 最小化（`contents: read`、`pages: write`、`id-token: write`）。
+- 步驟：checkout → setup-node 20 → `npm ci`（`frontend/desktop/`）→ `npm run build` → upload-pages-artifact（`dist/`）→ deploy-pages。
+- push main 後約 2–3 分鐘自動更新 GitHub Pages；幹部重新整理頁面即取得最新版。
+
+**部署網址**：`https://FatPigDash.github.io/AhhOuch_Manager/`
+
+**README 改寫**（`README.md`）：移除舊版 FastAPI+exe 安裝說明，改為：幹部加入主畫面教學（iOS/Android）、開發者部署流程（`git push` 一行）、本機開發（`npm run dev`）、目錄結構說明。
+
+**修正：CI build 失敗（`vite-plugin-pwa` 缺漏）**：
+- 根因：`vite-plugin-pwa` 已加入 devDependencies，但 package.json 修改從未被 commit；CI 上的 package.json 無此套件，`npm ci` 未安裝，vite.config.js 載入失敗。
+- 修正：commit package.json 並同步 package-lock.json（含 `vite-plugin-pwa 1.3.0` 及其依賴樹）；移除 workflow 的 npm 快取設定（快取導致 lockfile 誤判）。
+- 教訓：排查 CI 失敗時應先確認 `git status` 有無未提交的 package.json 變更，再查 lockfile 與 workflow。
+
+**驗證**：GitHub Actions 成功跑完（綠色勾勾）；`https://FatPigDash.github.io/AhhOuch_Manager/` 可開啟。
+
+### 2026-06-24 — 美容師資訊編輯頁面 UX 精修（M4 範圍）
+
+#### 11.37 美容師資訊編輯頁：頁面標示、文字框自動長高、修正編輯時畫面跳動（`CadreCardDetailView.vue`）
+
+僅改前端單一檔 `frontend/desktop/src/views/CadreCardDetailView.vue`，不動後端與資料庫。
+
+**(1) 頁面用途標示**：標題列下方加副標題「**美容師資訊編輯頁面**」（`.page-subtitle`），明確指出本頁在編輯美容師資訊卡片。
+
+**(2) 完整介紹／簡短介紹文字框自動長高、完整顯示、移除垂直捲軸**：
+- 新增 `v-autoresize` 指令套用於兩個 `<textarea>`（完整介紹、簡短介紹）。量高邏輯：先 `height:auto` 再設成 `scrollHeight`，使框高貼齊內容、完整呈現。
+- CSS 將 textarea 改為 `resize:none; overflow-y:hidden`（保留 `rows` 為初始最小高度），徹底移除垂直捲軸。
+- 修正 `box-sizing:border-box` 下 `scrollHeight` **不含邊框**會裁掉上下各 1px 的問題：量高時補回上下邊框寬度（`getComputedStyle` 取 `borderTopWidth/borderBottomWidth`）。
+
+**(3) 修正：編輯任一文字框時畫面跳到上方**（(2) 上線後回報的副作用）：
+- **主因**：`v-autoresize` 的 `updated` hook 只要元件重繪就會觸發，因此編輯**簡短介紹**或**資訊訊息連結**時，也會連帶對較高的**完整介紹**框重新量高——它會先被縮回 `auto`（瞬間變矮）再撐開，使頁面內容上移、捲動位置被瀏覽器夾回頂端；內容越長跳得越明顯。
+- **修正**：在 `updated` 加上「只有**這個欄位自己**的內容真的改變（比對 `el._lastResizeValue`）才重新量高」的判斷，編輯其他欄位時完整介紹框完全不被觸發。
+- **輔助**：`resizeTextarea` 量高前先記下 `window.scrollX/Y`、調整後立即 `window.scrollTo` 還原，作為正在編輯之文字框的雙重保險。
+
+**驗證**：Vite 轉換／編譯通過、主控台 0 錯誤；於瀏覽器預覽以原生 DOM 實測自動長高（`border-box`／`content-box` 皆 `hasScroll:false`，內容完整無捲軸）與捲動位置保留邏輯。完整實機操作（實際渲染卡片）需後端＋登入＋既有卡片資料，未一併拉起，但編譯與核心機制均已確認。
