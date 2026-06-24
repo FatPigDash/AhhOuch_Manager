@@ -1,138 +1,90 @@
-# AhhOuch
+# AhhOuch_Manager
 
-養身館**幹部**用的資訊管理軟體：建立美容師資訊卡片、編排班表，並一鍵發布到社群群組。
+養身館**幹部**用的資訊管理 PWA：建立美容師資訊卡片、編排班表，並分享到群組。
 
-> 原本的「客人」端（記錄各養身館美容師資訊與心得）已拆分為獨立軟體，本專案僅保留並改名為「幹部」的管理系統。
+- 架構：Vue 3 + Vite + IndexedDB（Local-First，無後端伺服器）
+- 托管：GitHub Pages（免費靜態托管，HTTPS）
+- 安裝：手機瀏覽器開啟網址 → 「加入主畫面」即可當 App 使用
 
-- 後端：Python + FastAPI（提供 REST API 與靜態網頁）
-- 前端：Vue 3（Vite 建置為靜態檔，由後端提供）
-- 資料庫：SQLite（單一檔案，置於 `DATA/`）
-- 打包：PyInstaller 單一免安裝 exe
-
----
-
-## 1. 安裝環境與套件
-
-> 需先安裝 [Python 3.11+](https://www.python.org/downloads/)（安裝時勾選 **Add to PATH**）與 [Node.js 18+](https://nodejs.org/)。
-
-**後端套件（擇一）**
-
-- 雙擊 `install.bat`，或在終端機執行：
-
-  ```bat
-  pip install -r requirements.txt
-
-  或是指令
-  python -m pip install -r requirements.txt
-  ```
-
-**前端套件**
-
-```bat
-cd frontend\desktop
-npm install
-```
+**使用網址：** https://FatPigDash.github.io/AhhOuch_Manager/
 
 ---
 
-## 2. 測試階段啟動
+## 給幹部：如何安裝到手機
 
-**方式 A — 一鍵啟動（建議日常使用）**
+**iOS（iPhone / iPad）**
 
-後端直接提供已建置的 Vue 介面，瀏覽器開 `http://localhost:8000`。
+1. 用 Safari 開啟上方網址
+2. 點下方中間的「分享」按鈕（方框加箭頭圖示）
+3. 選「加入主畫面」
+4. 點「新增」
 
-**首次啟動，或修改了前端程式碼之後，需先重新建置前端：**
+**Android**
 
-```bat
-cd frontend\desktop
-npm run build
-```
+1. 用 Chrome 開啟上方網址
+2. 點右上角三點選單
+3. 選「新增到主畫面」或「安裝應用程式」
 
-cd "D:\Fat Pig Project\AhhOuch_Edit\frontend\desktop"
+安裝後資料存在手機本機，不會上傳到任何伺服器。
 
-**建置完成後，回到專案根目錄再啟動後端：**
+---
+
+## 給開發者：版本更新流程
+
+修改程式碼後，執行以下指令即完成部署：
 
 ```powershell
-cd ..\..
-.\run_dev.bat
+git add .
+git commit -m "說明這次改了什麼"
+git push origin main
 ```
 
-> `cd ..\..` 會從 `frontend\desktop` 回到專案根目錄（`AhhOuch_Edit\`）。
-> PowerShell 需加 `.\` 前綴才能執行當前目錄的 `.bat` 檔；`run_dev.bat` 必須在根目錄執行，否則找不到 `run.py`。
+GitHub Actions 會自動 build 並部署到 GitHub Pages，約 **2-3 分鐘**後生效。  
+幹部重新整理頁面就會看到最新版本，不需要任何額外操作。
 
-啟動後會自動開啟瀏覽器（`http://localhost:8000`）。
+部署狀態可在此查看：https://github.com/FatPigDash/AhhOuch_Manager/actions
 
-**方式 B — 前後端分離（前端開發時用，支援熱更新）**
+---
 
-開兩個終端機：
+## 本機開發
 
-```bat
-REM 終端機 1：後端
-用方法A執行
-```
+需先安裝 [Node.js 18+](https://nodejs.org/)。
 
-```bat
-REM 終端機 2：前端（http://localhost:5173，/api 自動代理到後端）
+```powershell
 cd frontend\desktop
-npm run dev
+npm install      # 首次安裝套件
+npm run dev      # 啟動開發伺服器（http://localhost:5173）
 ```
 
 ---
 
-## 3. 打包成單一執行檔
+## 版次管理
 
-```bat
-python build.py
-```
-
-- 會自動建置前端、以 PyInstaller 產生單一 exe，並**清除打包過程檔**。
-- 產出位置：**`打包輸出/`** 資料夾，檔名為 `AhhOuch_v<版次>.exe`（如 `AhhOuch_v1.0.0.exe`）。
-- 已建置過前端、想略過前端建置：`python build.py --no-front`。
-
-打包後的 exe 為免安裝，雙擊即啟動並開啟瀏覽器；資料會寫入 exe 旁的 `DATA/`。
-
----
-
-## 4. 修改軟體名稱與版次
-
-**唯一需要修改的檔案：`app.toml`（專案根目錄）。**
+修改 `app.toml` 中的版次號：
 
 ```toml
-app_name = "AhhOuch"
-version  = "1.0.0"
+app_name = "AhhOuch_Manager"
+version  = "2.1.0"
 ```
-
-此檔為唯一事實來源，連動：前端標題、關於頁、以及打包後的 exe 檔名。**請勿在其他檔案硬編碼名稱或版次。**
 
 ---
 
-## 5. 資料與輸出位置
-
-| 項目             | 位置                               |
-| ---------------- | ---------------------------------- |
-| 資料庫與上傳圖片 | `DATA/`（`ahhouch.db`、`images/`） |
-| 打包後的 exe     | `打包輸出/`                        |
-
-> 開發模式下 `DATA/` 位於專案根目錄；打包後的 exe 則在 exe 所在目錄建立 `DATA/`。
-
----
-
-## 6. 目錄結構
+## 目錄結構
 
 ```
-AhhOuch_Edit/
-├─ run.py              進入點（也是打包進入點）
-├─ app.toml            ★ 軟體名稱與版次（單點修改）
-├─ requirements.txt    後端套件清單
-├─ install.bat         一鍵安裝後端套件
-├─ run_dev.bat         測試啟動
-├─ build.py            打包腳本（輸出到 打包輸出/、清過程檔）
-├─ backend/            FastAPI 後端
-│  ├─ main.py  version.py  config.py  database.py
-│  ├─ models/  routers/  services/
-├─ frontend/
-│  ├─ desktop/         電腦版（Vue 3 + Vite，優先開發）
-│  └─ mobile/          手機版（預留，M7）
-├─ DATA/               軟體輸出（資料庫、圖片）
-└─ 打包輸出/           打包後的 exe
+AhhOuch_Manager_Edit/
+├─ app.toml                  軟體名稱與版次
+├─ .github/workflows/
+│  └─ deploy.yml             GitHub Actions 自動部署設定
+└─ frontend/
+   └─ desktop/               PWA 主體（Vue 3 + Vite）
+      ├─ src/
+      │  ├─ db.js            IndexedDB 資料層
+      │  ├─ api.js           API 介面（Local-First）
+      │  ├─ router.js        Vue Router（hash 模式）
+      │  ├─ views/           頁面元件
+      │  └─ components/      共用元件
+      ├─ public/             PWA 圖示
+      ├─ index.html
+      └─ vite.config.js      含 PWA 設定（manifest、Service Worker）
 ```
