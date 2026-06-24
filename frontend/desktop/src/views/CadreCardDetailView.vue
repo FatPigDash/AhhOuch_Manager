@@ -46,45 +46,6 @@ const lightboxUrl = ref(null)
 const variant = ref('full') // full | short
 const publishNode = ref(null)
 const copied = ref(false)
-const targets = ref([])
-const sendMsg = ref('')
-
-// --- 自動發布：選擇要發布的內容 (複選圖片/完整介紹/簡短介紹) ---
-const showAutoPublish = ref(false)
-const autoTarget = ref(null)        // 使用者點選的發布目標
-const pickImage = ref(false)        // 是否附圖片
-const pickFull = ref(true)          // 是否附完整介紹
-const pickShort = ref(false)        // 是否附簡短介紹
-const selectedImageIds = ref([])    // 勾選 [圖片] 後挑選要發的圖片 id
-const autoSending = ref(false)
-const autoMsg = ref('')
-
-// 已勾選且實際要發送的圖片（依卡片順序）。
-const autoSelectedImages = computed(() =>
-  pickImage.value && card.value
-    ? card.value.images.filter((im) => selectedImageIds.value.includes(im.id))
-    : []
-)
-
-// 組合要發布的文字：名字 + 勾選的介紹。
-const autoText = computed(() => {
-  if (!card.value) return ''
-  const lines = [card.value.name]
-  if (pickFull.value && card.value.full_intro?.trim()) lines.push(card.value.full_intro.trim())
-  if (pickShort.value && card.value.short_intro?.trim()) lines.push(card.value.short_intro.trim())
-  return lines.join('\n')
-})
-
-// 至少要有一張選到的圖片或一個介紹才能發送（只剩名字不算有效內容）。
-const canAutoSend = computed(() =>
-  autoSelectedImages.value.length > 0 ||
-  (pickFull.value && !!card.value?.full_intro?.trim()) ||
-  (pickShort.value && !!card.value?.short_intro?.trim())
-)
-
-// 發布目標按鈕顯示「平台 名稱」，如「Telegram 111」。
-const PLATFORM_LABEL = { telegram: 'Telegram', x: 'X' }
-function platformLabel(p) { return PLATFORM_LABEL[p] || p || '' }
 
 const introText = computed(() =>
   card.value ? (variant.value === 'full' ? card.value.full_intro : card.value.short_intro) : ''
@@ -180,63 +141,13 @@ async function removeImage(img) {
 
 // --- 發布 (S5) ---
 async function openPublish() {
-  // 發布內容取自後端已儲存的資料；若有未儲存變更，先儲存再發布。
   if (dirty.value) {
     if (!confirm('發布前需先儲存目前的變更，要儲存並繼續嗎？')) return
     await save()
-    if (dirty.value) return  // 儲存失敗（如名字空白）則中止
+    if (dirty.value) return
   }
   showPublish.value = true
   copied.value = false
-  sendMsg.value = ''
-  try { targets.value = (await api.listTargets()).filter((t) => t.enabled) } catch (_) { /* 忽略 */ }
-}
-// 點發布目標：先彈出「選擇要發布哪些資訊」視窗（複選圖片/完整/簡短），確認後才送出。
-function startAutoPublish(t) {
-  autoTarget.value = t
-  autoMsg.value = ''
-  // 預設：有圖就附圖並預選封面、附完整介紹。
-  const imgs = card.value?.images || []
-  pickImage.value = imgs.length > 0
-  const cover = imgs.find((im) => im.is_cover) || imgs[0]
-  selectedImageIds.value = cover ? [cover.id] : []
-  pickFull.value = !!card.value?.full_intro?.trim()
-  pickShort.value = false
-  showAutoPublish.value = true
-}
-
-function toggleAutoImage(img) {
-  const idx = selectedImageIds.value.indexOf(img.id)
-  if (idx === -1) selectedImageIds.value.push(img.id)
-  else selectedImageIds.value.splice(idx, 1)
-}
-
-async function confirmAutoPublish() {
-  const t = autoTarget.value
-  if (!t || !canAutoSend.value) return
-  autoSending.value = true
-  autoMsg.value = `發布到「${t.name}」中…`
-  try {
-    const res = await api.publishCard(props.id, {
-      target_id: t.id,
-      image_ids: autoSelectedImages.value.map((im) => im.id),
-      text: autoText.value,
-    })
-    // 後端會把這次訊息連結寫回卡片；同步到畫面並更新快照，避免誤判為未儲存。
-    if (res?.link) {
-      card.value.info_link = res.link
-      if (saved.value) saved.value.info_link = res.link
-    }
-    autoMsg.value = res?.link
-      ? `✓ 已發布到「${t.name}」，已記錄訊息連結`
-      : `✓ 已發布到「${t.name}」（此群組無法取得訊息連結，名字將無法做超連結）`
-    sendMsg.value = `✓ 已發布到「${t.name}」`
-    setTimeout(() => { showAutoPublish.value = false }, 1200)
-  } catch (e) {
-    autoMsg.value = `✗ ${e.message}`
-  } finally {
-    autoSending.value = false
-  }
 }
 async function copyText() {
   try {
@@ -323,15 +234,6 @@ onBeforeUnmount(() => {
           <span>簡短介紹</span>
           <textarea v-model="card.short_intro" v-autoresize rows="2"></textarea>
         </label>
-        <label class="field">
-          <span>資訊訊息連結（自動發布後自動填入，可手動修改）</span>
-          <input
-            v-model="card.info_link"
-            type="url"
-            placeholder="例：https://t.me/c/1234567890/56　發布班表時名字會連到這則訊息"
-          />
-          <span class="hint">在 Telegram 對已發布的資訊訊息按右鍵「複製訊息連結」即可貼上；留空則班表名字不做超連結。</span>
-        </label>
       </div>
     </div>
 
@@ -384,68 +286,7 @@ onBeforeUnmount(() => {
           <button class="primary" @click="downloadImage">🖼 下載排版圖片</button>
         </div>
 
-        <div v-if="targets.length" class="auto-publish">
-          <span class="ap-label">自動發布到：</span>
-          <button v-for="t in targets" :key="t.id" class="chip-btn" @click="startAutoPublish(t)">📤 {{ platformLabel(t.platform) }} {{ t.name }}</button>
-        </div>
-        <p v-if="sendMsg" class="hint center">{{ sendMsg }}</p>
-
-        <p class="hint center">產生後手動貼到群組；或設定發布目標後一鍵自動發布。</p>
-      </div>
-    </div>
-
-    <!-- 自動發布：選擇要發布哪些資訊（複選）→ 預覽 → 確認 -->
-    <div v-if="showAutoPublish" class="modal-backdrop" @click.self="showAutoPublish = false">
-      <div class="modal">
-        <header class="modal-head">
-          <h2>發布到「{{ platformLabel(autoTarget?.platform) }} {{ autoTarget?.name }}」</h2>
-          <button class="x" @click="showAutoPublish = false">✕</button>
-        </header>
-
-        <p class="ap-section-label">選擇要發布的資訊（可複選）</p>
-        <div class="ap-choices">
-          <label class="ap-check"><input type="checkbox" v-model="pickImage" :disabled="!card.images.length" /> 圖片</label>
-          <label class="ap-check"><input type="checkbox" v-model="pickFull" /> 完整介紹</label>
-          <label class="ap-check"><input type="checkbox" v-model="pickShort" /> 簡短介紹</label>
-        </div>
-
-        <!-- 勾選「圖片」後挑選要發送的圖片 -->
-        <div v-if="pickImage" class="ap-img-pick">
-          <p class="ap-section-label">挑選要發送的圖片（可複選）</p>
-          <p v-if="!card.images.length" class="hint">此卡片尚無圖片</p>
-          <div v-else class="ap-img-grid">
-            <button
-              v-for="img in card.images"
-              :key="img.id"
-              type="button"
-              class="ap-img-cell"
-              :class="{ on: selectedImageIds.includes(img.id) }"
-              @click="toggleAutoImage(img)"
-            >
-              <img :src="img.url" alt="" />
-              <span v-if="selectedImageIds.includes(img.id)" class="ap-img-tick">✓</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- 預覽：實際會送出的圖片與文字 -->
-        <p class="ap-section-label">預覽</p>
-        <div class="ap-preview">
-          <div v-if="autoSelectedImages.length" class="ap-preview-imgs">
-            <img v-for="img in autoSelectedImages" :key="img.id" :src="img.url" alt="" />
-          </div>
-          <pre v-if="autoText" class="ap-preview-text">{{ autoText }}</pre>
-          <p v-if="!canAutoSend" class="hint">尚未選擇任何要發布的內容。</p>
-        </div>
-
-        <p v-if="autoMsg" class="hint center">{{ autoMsg }}</p>
-
-        <div class="modal-actions">
-          <button class="ghost" @click="showAutoPublish = false">取消</button>
-          <button class="primary" :disabled="!canAutoSend || autoSending" @click="confirmAutoPublish">
-            {{ autoSending ? '發布中…' : '✓ 確認發布' }}
-          </button>
-        </div>
+        <p class="hint center">產生後手動貼到群組。</p>
       </div>
     </div>
   </section>

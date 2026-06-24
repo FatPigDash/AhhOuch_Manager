@@ -6,7 +6,6 @@
   <nav class="cadre-nav">
     <router-link :to="{ name: 'cadre-list' }" class="tab">資訊卡片</router-link>
     <router-link :to="{ name: 'schedule-list' }" class="tab">班表</router-link>
-    <router-link :to="{ name: 'publish-settings' }" class="tab">發布設定</router-link>
   </nav>
 </template>
 

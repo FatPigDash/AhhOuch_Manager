@@ -20,8 +20,6 @@ const showPublish = ref(false)
 const publishText = ref('')
 const publishNode = ref(null)
 const copied = ref(false)
-const targets = ref([])
-const sendMsg = ref('')
 
 async function load() {
   try {
@@ -174,25 +172,10 @@ function toggleShift(entry, slot) {
 // 發布 (S11)
 async function openPublish() {
   copied.value = false
-  sendMsg.value = ''
   try {
     publishText.value = (await api.schedulePublishText(props.id)).text
-    targets.value = (await api.listTargets()).filter((t) => t.enabled)
     showPublish.value = true
   } catch (e) { error.value = e.message }
-}
-// 發布目標按鈕顯示「平台 名稱」，如「Telegram 111」。
-const PLATFORM_LABEL = { telegram: 'Telegram', x: 'X' }
-function platformLabel(p) { return PLATFORM_LABEL[p] || p || '' }
-async function sendToTarget(t) {
-  // 發送前先確認，避免不小心點到就發出去。
-  if (!confirm(`確定要發布到「${platformLabel(t.platform)} ${t.name}」嗎？`)) return
-  sendMsg.value = `發布到「${t.name}」中…`
-  try {
-    // 走 HTML 發布端點：已發布過資訊的美容師，名字會自動加上超連結。
-    await api.publishSchedule(props.id, { target_id: t.id })
-    sendMsg.value = `✓ 已發布到「${t.name}」`
-  } catch (e) { sendMsg.value = `✗ ${e.message}` }
 }
 async function copyText() {
   try {
@@ -345,13 +328,6 @@ onMounted(() => { load(); loadCards() })
           <button class="ghost" @click="copyText">{{ copied ? '✓ 已複製文字' : '📋 複製純文字' }}</button>
           <button class="primary" @click="downloadImage">🖼 下載排版圖片</button>
         </div>
-
-        <div v-if="targets.length" class="auto-publish">
-          <span class="ap-label">自動發布到：</span>
-          <button v-for="t in targets" :key="t.id" class="chip-btn" @click="sendToTarget(t)">📤 {{ platformLabel(t.platform) }} {{ t.name }}</button>
-        </div>
-        <p v-if="targets.length" class="hint center">自動發布時，曾發布過資訊的美容師名字會自動連到該則資訊訊息（僅自動發布有效）。</p>
-        <p v-if="sendMsg" class="hint center">{{ sendMsg }}</p>
 
         <p class="hint center">產生後手動貼到群組；草稿已自動保存，可再次編輯發布。</p>
       </div>
