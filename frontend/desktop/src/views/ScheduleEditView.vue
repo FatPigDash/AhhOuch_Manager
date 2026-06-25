@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import html2canvas from 'html2canvas'
 import { api } from '../api'
 import { canShare, share } from '../share'
+import { sendText as tgSendText } from '../telegram'
 import TextTemplateBar from '../components/TextTemplateBar.vue'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
@@ -23,6 +24,9 @@ const publishNode = ref(null)
 const copied = ref(false)
 const shareNotice = ref('')
 const shareSupported = canShare()
+const targets = ref([])      // Telegram 發布目標（啟用中）
+const tgNotice = ref('')
+const tgSending = ref(false)
 
 async function load() {
   try {
@@ -176,10 +180,24 @@ function toggleShift(entry, slot) {
 async function openPublish() {
   copied.value = false
   shareNotice.value = ''
+  tgNotice.value = ''
   try {
     publishText.value = (await api.schedulePublishText(props.id)).text
+    try { targets.value = (await api.listTargets()).filter(t => t.enabled) } catch (_) { targets.value = [] }
     showPublish.value = true
   } catch (e) { error.value = e.message }
+}
+// 發送班表文字到 Telegram（純前端直連），成功後標記已發布。
+async function sendToTelegram(target) {
+  tgNotice.value = ''
+  tgSending.value = true
+  try {
+    await tgSendText(target.token, target.target_id, publishText.value)
+    tgNotice.value = `✓ 已發送到「${target.name}」`
+    await markPublished()
+  } catch (e) {
+    tgNotice.value = `發送到「${target.name}」失敗：${e.message}`
+  } finally { tgSending.value = false }
 }
 // S6：成功發布（分享／複製／下載任一）後記錄發布時間，草稿列表即標示「已發布」。
 async function markPublished() {
@@ -356,6 +374,15 @@ onMounted(() => { load(); loadCards() })
         </button>
         <p v-if="shareNotice" class="hint center notice">{{ shareNotice }}</p>
 
+        <!-- 一鍵發送到 Telegram（依「發布設定」的目標） -->
+        <div v-if="targets.length" class="tg-section">
+          <span class="tg-label">發送到 Telegram</span>
+          <button v-for="t in targets" :key="t.id" class="tg-btn" :disabled="tgSending" @click="sendToTelegram(t)">
+            ✈ {{ t.name }}
+          </button>
+        </div>
+        <p v-if="tgNotice" class="hint center notice">{{ tgNotice }}</p>
+
         <div class="modal-actions">
           <button class="ghost" @click="copyText">{{ copied ? '✓ 已複製文字' : '📋 複製純文字' }}</button>
           <button class="ghost" @click="downloadImage">🖼 下載排版圖片</button>
@@ -425,6 +452,10 @@ button.primary { background: #2680c2; color: #fff; border: none; border-radius: 
 .pub-text { white-space: pre-wrap; font-family: inherit; font-size: 1rem; line-height: 1.6; color: #1f2933; margin: 0; }
 .share-main { display: block; width: 100%; padding: 11px; margin: 16px 0 6px; font-size: 1rem; }
 .notice { color: #b7791f; }
+.tg-section { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 6px; padding-top: 10px; border-top: 1px solid #f0f2f5; }
+.tg-label { font-size: 0.85rem; color: #627d98; }
+.tg-btn { border: 1px solid #2680c2; color: #0a558c; background: #e3f0fb; border-radius: 999px; padding: 5px 14px; font-size: 0.9rem; }
+.tg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .modal-actions { display: flex; gap: 10px; margin: 10px 0 6px; }
 .modal-actions button { flex: 1; padding: 9px; border: none; border-radius: 8px; }
 .auto-publish { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 6px; padding-top: 10px; border-top: 1px solid #f0f2f5; }

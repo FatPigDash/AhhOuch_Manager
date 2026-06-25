@@ -3,7 +3,7 @@
 import { processImage } from './imageUtil.js'
 
 const DB_NAME = 'ahhouch_db'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 let _db = null
 
@@ -29,6 +29,9 @@ function openDB() {
         const s = db.createObjectStore('text_templates', { keyPath: 'id', autoIncrement: true })
         s.createIndex('by_kind', 'kind', { unique: false })
       }
+      // v2：Telegram 發布目標（純前端直連 api.telegram.org，token/chat_id 存本機）
+      if (!db.objectStoreNames.contains('publish_targets'))
+        db.createObjectStore('publish_targets', { keyPath: 'id', autoIncrement: true })
     }
     req.onsuccess = (e) => { _db = e.target.result; resolve(_db) }
     req.onerror = () => reject(req.error)
@@ -56,7 +59,7 @@ function now() { return new Date().toISOString() }
 
 // ── 備份：全資料匯出／還原（M6） ─────────────────────────────────────────
 
-const ALL_STORES = ['cards', 'images', 'schedules', 'entries', 'text_templates']
+const ALL_STORES = ['cards', 'images', 'schedules', 'entries', 'text_templates', 'publish_targets']
 
 // 匯出所有 store 的原始記錄（images 含 blob/thumb 的 Blob 物件，由 backup.js 抽出成檔）。
 export async function dumpAll() {
@@ -384,6 +387,44 @@ export async function updateTextTemplate(id, data) {
 export async function deleteTextTemplate(id) {
   const db = await openDB()
   await p(db.transaction('text_templates', 'readwrite').objectStore('text_templates').delete(Number(id)))
+}
+
+// ── Telegram 發布目標 ───────────────────────────────────────────────────
+
+export async function listTargets() {
+  const db = await openDB()
+  const targets = await p(db.transaction('publish_targets', 'readonly').objectStore('publish_targets').getAll())
+  return targets.sort((a, b) => a.id - b.id)
+}
+
+export async function createTarget(data) {
+  const db = await openDB()
+  const id = await p(db.transaction('publish_targets', 'readwrite').objectStore('publish_targets').add({
+    name: data.name || '', platform: 'telegram',
+    token: data.token || '', target_id: data.target_id || '',
+    enabled: data.enabled !== false, created_at: now(),
+  }))
+  return { id }
+}
+
+export async function updateTarget(id, data) {
+  const db = await openDB()
+  const t = db.transaction('publish_targets', 'readwrite')
+  const store = t.objectStore('publish_targets')
+  const tgt = await p(store.get(Number(id)))
+  if (!tgt) throw new Error('找不到發布目標')
+  if (data.name !== undefined) tgt.name = data.name
+  if (data.target_id !== undefined) tgt.target_id = data.target_id
+  if (data.enabled !== undefined) tgt.enabled = data.enabled
+  // token 留空＝不更動（沿用原本「編輯時不必重打金鑰」的行為）
+  if (data.token) tgt.token = data.token
+  await p(store.put(tgt))
+  return tgt
+}
+
+export async function deleteTarget(id) {
+  const db = await openDB()
+  await p(db.transaction('publish_targets', 'readwrite').objectStore('publish_targets').delete(Number(id)))
 }
 
 // ── 發布文字生成（本機） ─────────────────────────────────────────────────

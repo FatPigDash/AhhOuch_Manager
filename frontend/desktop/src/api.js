@@ -35,5 +35,11 @@ export const api = {
   updateTextTemplate:  (id, data) => db.updateTextTemplate(id, data),
   deleteTextTemplate:  (id) => db.deleteTextTemplate(id),
 
-  // 發布改由各視窗以 Web Share API（src/share.js）在使用者手勢中直接呼叫（M4）。
+  // ===== Telegram 發布目標（純前端直連，src/telegram.js 負責實際送出） =====
+  listTargets:   ()         => db.listTargets(),
+  createTarget:  (data)     => db.createTarget(data),
+  updateTarget:  (id, data) => db.updateTarget(id, data),
+  deleteTarget:  (id)       => db.deleteTarget(id),
+
+  // 分享發布另由各視窗以 Web Share API（src/share.js）在使用者手勢中直接呼叫（M4）。
 }

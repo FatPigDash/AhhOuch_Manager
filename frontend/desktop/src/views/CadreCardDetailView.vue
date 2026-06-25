@@ -4,6 +4,7 @@ import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import html2canvas from 'html2canvas'
 import { api } from '../api'
 import { canShare, canShareFiles, share, urlsToFiles } from '../share'
+import { sendCard as tgSendCard } from '../telegram'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
 const router = useRouter()
@@ -52,6 +53,9 @@ const copied = ref(false)
 const includePhotos = ref(true)   // C4：是否連同照片一起發出
 const shareNotice = ref('')       // 分享狀態提示（降級／取消等）
 const shareSupported = canShare()
+const targets = ref([])           // Telegram 發布目標（啟用中）
+const tgNotice = ref('')          // Telegram 發送狀態
+const tgSending = ref(false)
 
 const introText = computed(() =>
   card.value ? (variant.value === 'full' ? card.value.full_intro : card.value.short_intro) : ''
@@ -185,6 +189,24 @@ async function openPublish() {
   showPublish.value = true
   copied.value = false
   shareNotice.value = ''
+  tgNotice.value = ''
+  try { targets.value = (await api.listTargets()).filter(t => t.enabled) } catch (_) { targets.value = [] }
+}
+// 發送到 Telegram（純前端直連）。沿用發布視窗的介紹版本與「連同照片」選項。
+async function sendToTelegram(target) {
+  tgNotice.value = ''
+  tgSending.value = true
+  try {
+    const { text } = await api.publishText(props.id, variant.value)
+    let files = []
+    if (includePhotos.value && card.value.images.length) {
+      files = await urlsToFiles(card.value.images.map(i => i.url), card.value.name || 'card')
+    }
+    await tgSendCard(target.token, target.target_id, files, text)
+    tgNotice.value = `✓ 已發送到「${target.name}」`
+  } catch (e) {
+    tgNotice.value = `發送到「${target.name}」失敗：${e.message}`
+  } finally { tgSending.value = false }
 }
 // C4/C5：透過 Web Share API 發布卡片（文字＋可選照片）至 LINE 等。
 async function shareCard() {
@@ -353,6 +375,15 @@ onBeforeUnmount(() => {
         </button>
         <p v-if="shareNotice" class="hint center notice">{{ shareNotice }}</p>
 
+        <!-- 一鍵發送到 Telegram（依「發布設定」的目標） -->
+        <div v-if="targets.length" class="tg-section">
+          <span class="tg-label">發送到 Telegram</span>
+          <button v-for="t in targets" :key="t.id" class="tg-btn" :disabled="tgSending" @click="sendToTelegram(t)">
+            ✈ {{ t.name }}
+          </button>
+        </div>
+        <p v-if="tgNotice" class="hint center notice">{{ tgNotice }}</p>
+
         <div class="modal-actions">
           <button class="ghost" @click="copyText">{{ copied ? '✓ 已複製文字' : '📋 複製純文字' }}</button>
           <button class="ghost" @click="downloadImage">🖼 下載排版圖片</button>
@@ -416,6 +447,10 @@ onBeforeUnmount(() => {
 .photo-toggle input { width: 16px; height: 16px; }
 .share-main { display: block; width: 100%; padding: 11px; border: none; border-radius: 8px; margin: 16px 0 6px; font-size: 1rem; }
 .notice { color: #b7791f; }
+.tg-section { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 6px; padding-top: 10px; border-top: 1px solid #f0f2f5; }
+.tg-label { font-size: 0.85rem; color: #627d98; }
+.tg-btn { border: 1px solid #2680c2; color: #0a558c; background: #e3f0fb; border-radius: 999px; padding: 5px 14px; font-size: 0.9rem; }
+.tg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .modal-actions { display: flex; gap: 10px; margin: 10px 0 6px; }
 .modal-actions button { flex: 1; padding: 9px; border: none; border-radius: 8px; }
 .auto-publish { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 6px; padding-top: 10px; border-top: 1px solid #f0f2f5; }

@@ -942,6 +942,27 @@ git push origin main
 
 > M0–M6 全數完成，需求對照表全項驗收通過。
 
+#### 11.45 補做：Telegram 自動發布還原（純前端直連 api.telegram.org）
+
+**背景**：M1 移除了原本「後端 FastAPI 跑 bot 推送」的 Telegram 自動發布（因與「無開發者伺服器」決策衝突），改以 M4 的 Web Share API。使用者希望保留 Telegram 一鍵自動發布，故以**純前端直連**方式還原——PWA 直接呼叫 `api.telegram.org`，bot token／chat_id 存手機本機，**仍不需任何後端**。Web Share（LINE）並存。
+
+**新增 `frontend/desktop/src/telegram.js`**：移植自原 `publish_service.py` 的 Telegram 邏輯——無圖 `sendMessage`、1 張 `sendPhoto`、多張 `sendMediaGroup`，文字未超過 1024 當圖片說明文字、過長則圖片送完補純文字。
+- **關鍵踩雷與修正（CORS preflight）**：原以 `application/json` POST 會觸發 CORS 預檢（OPTIONS），而 Telegram Bot API 不回應 preflight，瀏覽器直連即失敗（`GET getMe` 可、`POST sendMessage` 不可）。改用 CORS 安全清單內的內容型別免預檢：一般呼叫用 `URLSearchParams`（`application/x-www-form-urlencoded`）、含圖片用 `FormData`（`multipart/form-data`）。修正後 `sendMessage`／`sendPhoto`／`sendMediaGroup` 皆能直連成功。
+
+**`db.js`**：DB 升版 **v1→v2**，新增 `publish_targets` object store 與 `listTargets/createTarget/updateTarget/deleteTarget`（`updateTarget` 沿用「token 留空＝不更動」）。`publish_targets` 納入備份 `ALL_STORES`（換機可一併還原發布設定）。
+
+**`views/PublishSettingsView.vue`（還原）＋ 路由 `/cadre/publish-settings` ＋ `CadreNav` 加「發布設定」分頁**：移植原設定頁，簡化為 Telegram 專用（移除未實作的 X）；保留 @BotFather 金鑰與 chat_id 取得的圖文教學彈窗；token 改存本機、列表顯示遮罩、編輯留空不更動。
+
+**`CadreCardDetailView.vue` / `ScheduleEditView.vue`**：發布視窗新增「發送到 Telegram」區，列出啟用中的目標為按鈕；卡片沿用「介紹版本＋連同照片」選項以 `telegram.sendCard` 送出（圖片經 `share.js` 的 `urlsToFiles` 轉 File），班表以 `telegram.sendText` 送出並於成功後 `markPublished`。Web Share「分享至 LINE 等」與複製/下載備援保留。
+
+**驗證**（Vite dev server 實機 preview_eval）：
+- DB v2 升級、目標 CRUD（含 token 留空不更動、提供則更新）正確。
+- **Telegram 直連**：修正前 `POST` 因 preflight 失敗（重現問題）；修正後 `sendText` 與 `sendCard`（多圖 multipart）皆抵達 API，假 token 回 `Unauthorized`（即請求成功送達，真 token 即可發出）。
+- UI：發布設定頁、導覽新增分頁、卡片與班表發布視窗皆顯示「發送到 Telegram」目標按鈕；點擊端到端送出，失敗時顯示錯誤提示且班表不誤標已發布。
+- `npm run build` 成功（新增 fflate 之外無新依賴；Telegram 用瀏覽器內建 fetch）。測試資料已清除為基線。
+
+> 後端的 Telegram 程式碼（`backend/publish*`）對 PWA 已不再使用，可日後另行清理。
+
 ### 2026-06-24 — 美容師資訊編輯頁面 UX 精修（M4 範圍）
 
 #### 11.37 美容師資訊編輯頁：頁面標示、文字框自動長高、修正編輯時畫面跳動（`CadreCardDetailView.vue`）
