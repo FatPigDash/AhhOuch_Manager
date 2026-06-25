@@ -181,6 +181,13 @@ async function openPublish() {
     showPublish.value = true
   } catch (e) { error.value = e.message }
 }
+// S6：成功發布（分享／複製／下載任一）後記錄發布時間，草稿列表即標示「已發布」。
+async function markPublished() {
+  try {
+    const at = await api.markSchedulePublished(props.id)
+    schedule.value.published_at = at
+  } catch (_) { /* 記錄發布時間失敗不影響發布本身 */ }
+}
 // S5：透過 Web Share API 發布班表文字至 LINE 等。
 async function shareSchedule() {
   shareNotice.value = ''
@@ -189,6 +196,8 @@ async function shareSchedule() {
     const result = await share({ title, text: publishText.value })
     if (result === 'unsupported') {
       shareNotice.value = '此裝置不支援系統分享，請改用「複製純文字」或「下載排版圖片」。'
+    } else if (result === 'shared') {
+      await markPublished()
     }
   } catch (e) { shareNotice.value = '分享失敗：' + e.message }
 }
@@ -197,6 +206,7 @@ async function copyText() {
     await navigator.clipboard.writeText(publishText.value)
     copied.value = true
     setTimeout(() => (copied.value = false), 2000)
+    await markPublished()
   } catch (e) { error.value = '複製失敗：' + e.message }
 }
 async function downloadImage() {
@@ -210,6 +220,7 @@ async function downloadImage() {
       a.click()
       URL.revokeObjectURL(a.href)
     })
+    await markPublished()
   } catch (e) { error.value = '產生圖片失敗：' + e.message }
 }
 

@@ -201,7 +201,7 @@ export async function listSchedules() {
   const result = []
   for (const s of schedules) {
     const entries = await p(db.transaction('entries', 'readonly').objectStore('entries').index('by_schedule').getAll(s.id))
-    result.push({ id: s.id, title: s.title || '', entry_count: entries.length, updated_at: s.updated_at })
+    result.push({ id: s.id, title: s.title || '', entry_count: entries.length, updated_at: s.updated_at, published_at: s.published_at || null })
   }
   return result
 }
@@ -209,7 +209,7 @@ export async function listSchedules() {
 export async function createSchedule(title = '') {
   const db = await openDB()
   const id = await p(db.transaction('schedules', 'readwrite').objectStore('schedules').add({
-    title, footer: '', date: '', created_at: now(), updated_at: now(),
+    title, footer: '', date: '', published_at: null, created_at: now(), updated_at: now(),
   }))
   return { id, title }
 }
@@ -234,7 +234,21 @@ export async function getSchedule(id) {
       auto_start: e.auto_start || '',
     })
   }
-  return { id: s.id, title: s.title || '', footer: s.footer || '', date: s.date || '', entries: enriched }
+  return { id: s.id, title: s.title || '', footer: s.footer || '', date: s.date || '', published_at: s.published_at || null, entries: enriched }
+}
+
+// 標記班表已發布（記錄發布時間）。不更動 updated_at——發布本身未改內容，
+// 草稿列表的「更新」時間應只反映內容編輯。
+export async function markSchedulePublished(id) {
+  const db = await openDB()
+  const numId = Number(id)
+  const t = db.transaction('schedules', 'readwrite')
+  const store = t.objectStore('schedules')
+  const s = await p(store.get(numId))
+  if (!s) throw new Error('找不到班表')
+  s.published_at = now()
+  await p(store.put(s))
+  return s.published_at
 }
 
 export async function updateSchedule(id, data) {

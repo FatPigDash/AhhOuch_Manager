@@ -43,8 +43,15 @@ onMounted(load)
     <ul class="list">
       <li v-for="s in schedules" :key="s.id" class="row">
         <div class="info" @click="open(s)">
-          <div class="title">{{ firstLine(s.title) }}</div>
-          <div class="meta">{{ s.entry_count }} 位出勤 ｜ 更新 {{ fmtDate(s.updated_at) }}</div>
+          <div class="title">
+            {{ firstLine(s.title) }}
+            <span v-if="s.published_at" class="badge published">已發布</span>
+            <span v-else class="badge draft">草稿</span>
+          </div>
+          <div class="meta">
+            {{ s.entry_count }} 位出勤 ｜ 更新 {{ fmtDate(s.updated_at) }}
+            <template v-if="s.published_at"> ｜ 發布 {{ fmtDate(s.published_at) }}</template>
+          </div>
         </div>
         <div class="actions">
           <button class="ghost" @click.stop="open(s)">編輯</button>
@@ -65,6 +72,9 @@ h1 { margin: 0; }
 .row { display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid #e4e7eb; border-radius: 10px; padding: 12px 16px; }
 .info { cursor: pointer; flex: 1; }
 .title { font-weight: 600; }
+.badge { display: inline-block; margin-left: 8px; font-size: 0.72rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; vertical-align: middle; }
+.badge.published { background: #e3f9ec; color: #207544; }
+.badge.draft { background: #f0f2f5; color: #829ab1; }
 .meta { color: #627d98; font-size: 0.85rem; margin-top: 2px; }
 .actions { display: flex; gap: 8px; }
 .actions button { font-size: 0.85rem; padding: 6px 12px; border: none; border-radius: 8px; }

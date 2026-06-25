@@ -865,6 +865,26 @@ git push origin main
 - `npm run build` 成功（PWA 產出）。測試資料已清除。
 - 註：實際彈出系統分享選單、攜帶圖片至 LINE 屬 §6.2 待實機驗證項（iOS 15+ Safari／Android Chrome），桌面已驗證 payload 組裝與降級邏輯。
 
+#### 11.42 M5：草稿管理（S6/S7）— 發布狀態追蹤
+
+**背景**：本架構下班表在編輯時即時寫入 IndexedDB（每次改動立刻存），且新增與編輯共用同一 `ScheduleEditView`，故「自動存草稿」（S6 前半）與「修改草稿介面同初次編輯」（S7）本就成立。M5 補足的是**發布狀態的可見性**——讓「發布後留存草稿、可再次編輯發布」有明確標示，能分辨哪些班表已發布、何時發布。
+
+**`db.js`**：
+- schedule 記錄新增 `published_at`（DB 仍 version 1，僅新增物件欄位）；`createSchedule` 初始為 `null`、`getSchedule`／`listSchedules` 一併回傳。
+- 新增 `markSchedulePublished(id)`：設 `published_at = now()`，**刻意不動 `updated_at`**——發布未改內容，草稿列表的「更新」時間只反映內容編輯。
+
+**`api.js`**：新增 `markSchedulePublished`。
+
+**`ScheduleEditView.vue`**：發布視窗三個輸出動作（分享成功 `'shared'`／複製純文字成功／下載排版圖片成功）任一完成後呼叫 `markPublished()` 記錄發布時間並更新本地 `published_at`；記錄失敗不影響發布本身。
+
+**`ScheduleListView.vue`**：每列標題後加狀態徽章——`published_at` 有值顯示綠色「已發布」並於 meta 加「發布 {時間}」，否則顯示灰色「草稿」。
+
+**驗證**（Vite dev server 實機 preview_eval）：
+- 資料層：新班表 `published_at=null`→`markSchedulePublished` 後列表與 `getSchedule` 皆帶發布時間。
+- 列表 UI：草稿（灰）與已發布（綠＋發布時間）兩種徽章正確渲染（截圖佐證）。
+- 端到端：開啟草稿→發布視窗點「下載排版圖片」→該草稿即翻為「已發布」（走真實 UI 路徑 `markPublished`）。
+- `npm run build` 成功。測試資料已清除。
+
 ### 2026-06-24 — 美容師資訊編輯頁面 UX 精修（M4 範圍）
 
 #### 11.37 美容師資訊編輯頁：頁面標示、文字框自動長高、修正編輯時畫面跳動（`CadreCardDetailView.vue`）
