@@ -2,16 +2,6 @@
 
 import * as db from './db.js'
 
-// dataURL 字串 → Blob（供剪貼簿貼上使用）
-function dataUrlToBlob(dataUrl) {
-  const [header, base64] = dataUrl.split(',')
-  const mime = header.match(/:(.*?);/)[1]
-  const binary = atob(base64)
-  const arr = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i)
-  return new Blob([arr], { type: mime })
-}
-
 export const api = {
   meta: () => Promise.resolve({ title: 'AhhOuch_Manager v2.1.0' }),
 
@@ -22,7 +12,6 @@ export const api = {
   updateCadreCard:  (id, data)   => db.updateCard(id, data),
   deleteCadreCard:  (id)         => db.deleteCard(id),
   uploadCadreImage: (cardId, file)    => db.addImage(cardId, file),
-  pasteCadreImage:  (cardId, dataUrl) => db.addImage(cardId, dataUrlToBlob(dataUrl)),
   setCadreCover:    (imageId)    => db.setCover(imageId),
   deleteCadreImage: (imageId)    => db.deleteImage(imageId),
   publishText: (cardId, variant) => db.cardPublishText(cardId, variant).then(text => ({ text })),

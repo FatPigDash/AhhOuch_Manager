@@ -41,6 +41,8 @@ const saved = ref(null)   // 最後一次已儲存的文字欄位快照，用於
 const error = ref('')
 const savedMsg = ref('')
 const fileInput = ref(null)
+const cameraInput = ref(null)
+const busy = ref(false)        // 圖片處理中（壓縮/縮圖需要時間）
 const showPublish = ref(false)
 const lightboxUrl = ref(null)
 const variant = ref('full') // full | short
@@ -109,27 +111,57 @@ async function reloadImages() {
     card.value.cover_image = fresh.cover_image
   } catch (e) { error.value = e.message }
 }
+// 相簿選圖 / 拍照（手機）/ 檔案上傳 — 共用同一處理流程。
 async function onFiles(e) {
-  for (const file of e.target.files) {
-    try { await api.uploadCadreImage(props.id, file) } catch (err) { error.value = err.message }
-  }
+  const files = Array.from(e.target.files || [])
   e.target.value = ''
-  await reloadImages()
+  if (!files.length) return
+  busy.value = true
+  try {
+    for (const file of files) {
+      try { await api.uploadCadreImage(props.id, file) } catch (err) { error.value = err.message }
+    }
+    await reloadImages()
+  } finally { busy.value = false }
 }
-function onPaste(e) {
+// 桌面：在本頁按 Ctrl+V 貼上剪貼簿圖片。
+async function onPaste(e) {
   const items = e.clipboardData?.items || []
   for (const item of items) {
     if (item.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = async () => {
-        try { await api.pasteCadreImage(props.id, reader.result); await reloadImages() }
-        catch (err) { error.value = err.message }
-      }
-      reader.readAsDataURL(item.getAsFile())
       e.preventDefault()
+      const file = item.getAsFile()
+      busy.value = true
+      try { await api.uploadCadreImage(props.id, file); await reloadImages() }
+      catch (err) { error.value = err.message }
+      finally { busy.value = false }
       return
     }
   }
+}
+// 手機：以按鈕讀取剪貼簿圖片（iOS Safari / Android Chrome 支援 navigator.clipboard.read）。
+async function pasteFromClipboard() {
+  if (!navigator.clipboard?.read) {
+    error.value = '此瀏覽器不支援讀取剪貼簿，請改用「上傳圖片」或在桌面按 Ctrl+V。'
+    return
+  }
+  busy.value = true
+  try {
+    const items = await navigator.clipboard.read()
+    let added = false
+    for (const item of items) {
+      const type = item.types.find(t => t.startsWith('image/'))
+      if (type) {
+        const blob = await item.getType(type)
+        await api.uploadCadreImage(props.id, blob)
+        added = true
+      }
+    }
+    if (added) { await reloadImages(); error.value = '' }
+    else error.value = '剪貼簿中沒有圖片。'
+  } catch (err) {
+    error.value = '讀取剪貼簿失敗：' + err.message
+  } finally { busy.value = false }
 }
 async function setCover(img) {
   try { await api.setCadreCover(img.id); await reloadImages() } catch (e) { error.value = e.message }
@@ -211,7 +243,7 @@ onBeforeUnmount(() => {
       <div class="panel-body">
         <div class="images">
           <div v-for="img in card.images" :key="img.id" class="img-cell" :class="{ cover: img.is_cover }" style="cursor:zoom-in" @click="lightboxUrl = img.url">
-            <img :src="img.url" alt="" />
+            <img :src="img.thumb_url || img.url" alt="" />
             <span v-if="img.is_cover" class="cover-badge">封面</span>
             <div class="img-actions" @click.stop>
               <button v-if="!img.is_cover" @click="setCover(img)" title="設為封面">★</button>
@@ -221,9 +253,13 @@ onBeforeUnmount(() => {
           <div v-if="card.images.length === 0" class="img-empty">尚無圖片（非必填）</div>
         </div>
         <div class="img-add">
-          <button class="ghost" @click="fileInput.click()">⬆ 上傳圖片</button>
-          <span class="hint">或在本頁按 Ctrl+V 貼上剪貼簿圖片</span>
+          <button class="ghost" :disabled="busy" @click="fileInput.click()">⬆ 上傳圖片</button>
+          <button class="ghost" :disabled="busy" @click="cameraInput.click()">📷 拍照</button>
+          <button class="ghost" :disabled="busy" @click="pasteFromClipboard">📋 貼上</button>
+          <span v-if="busy" class="hint">處理圖片中…</span>
+          <span v-else class="hint">桌面亦可按 Ctrl+V 貼上</span>
           <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles" />
+          <input ref="cameraInput" type="file" accept="image/*" capture="environment" hidden @change="onFiles" />
         </div>
 
         <label class="field">
@@ -321,7 +357,8 @@ onBeforeUnmount(() => {
 .img-actions { position: absolute; bottom: 4px; right: 4px; display: flex; gap: 4px; }
 .img-actions button { border: none; border-radius: 6px; background: rgba(0,0,0,0.55); color: #fff; width: 24px; height: 24px; }
 .img-empty { color: #9fb3c8; font-size: 0.85rem; padding: 8px 0; }
-.img-add { display: flex; align-items: center; gap: 10px; }
+.img-add { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.img-add button:disabled { opacity: 0.5; cursor: not-allowed; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; color: #486581; }
 .field textarea { padding: 8px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.95rem; color: #1f2933; resize: none; overflow-y: hidden; line-height: 1.5; }
 .field input { padding: 8px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.95rem; color: #1f2933; }

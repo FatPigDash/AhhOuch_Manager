@@ -809,6 +809,34 @@ git push origin main
 
 **驗證**：GitHub Actions 成功跑完（綠色勾勾）；`https://FatPigDash.github.io/AhhOuch_Manager/` 可開啟。
 
+#### 11.40 M3：圖片功能（手機版）— 匯入最佳化＋縮圖、拍照、剪貼簿貼上按鈕
+
+**目標**：手機端三種圖片來源（相簿選取／直接拍照／剪貼簿貼上）齊備，並做大圖縮圖最佳化以支撐「預設 2000 張圖片」容量基準（計畫 §6.3 / 需求 C2、D3、D5）。
+
+**新增 `frontend/desktop/src/imageUtil.js`（圖片最佳化）**：
+- `processImage(File|Blob)` → `{ full, thumb }`：以 `createImageBitmap`（`imageOrientation:'from-image'` 依 EXIF 自動轉正；不支援時退回 `HTMLImageElement`）解碼，再用 canvas 等比縮放後 `toBlob` 重新編碼為 JPEG。
+- 兩份輸出：`full` 最長邊 ≤ 1600px（quality 0.85，供燈箱／發布排版）、`thumb` 最長邊 ≤ 400px（quality 0.7，供列表與編輯頁網格）。
+- JPEG 無透明度，繪製前先鋪白底，避免透明 PNG 轉檔後出現黑背景。
+- 任一步驟失敗則退回原圖，確保上傳不因最佳化中斷。
+
+**`db.js`**：
+- `addImage` 改為先 `processImage` 再存：images 記錄新增 `thumb` 欄位（DB 仍 version 1，僅新增物件欄位、不需升級）。回傳含 `thumb_url`。
+- `getCard` 每張圖回傳 `thumb_url`（舊資料無 `thumb` 時退回完整圖）；`listCards` 封面改用縮圖。
+
+**`CadreCardDetailView.vue`**：
+- 圖片網格 `<img>` 改用 `thumb_url`（燈箱仍開完整圖 `url`）。
+- 圖片操作列新增「📷 拍照」（`<input capture="environment">`，手機直接開相機）與「📋 貼上」（`navigator.clipboard.read()`，手機版讀剪貼簿圖片；不支援時提示改用上傳／Ctrl+V）；保留桌面 Ctrl+V 貼上。
+- 新增 `busy` 狀態：壓縮／縮圖期間按鈕停用並顯示「處理圖片中…」。
+
+**`api.js`**：移除已無用的 `pasteCadreImage` 與 `dataUrlToBlob`（貼上改以 Blob 直送 `uploadCadreImage`，最佳化統一在 `db.addImage` 完成）。
+
+**驗證**（Vite dev server 實機 preview_eval）：
+- 最佳化：來源 PNG 2400×1600（3209 KB）→ `full` 1600×1067 JPEG（18 KB）、`thumb` 400×267 JPEG（2 KB），長邊上限與比例正確。
+- 端到端：經 UI 同一路徑 `api.uploadCadreImage` 上傳→設封面→網格顯示縮圖（`blob:` URL）、封面藍框與「封面」標記正確；刪除後歸零。測試資料已清除。
+- 三顆按鈕（上傳／拍照／貼上）與提示文字渲染正確（截圖佐證）。
+- `npm run build` 成功（44 模組、PWA 產出）。
+- 註：iOS Safari／Android Chrome 之 `capture` 開相機與 `clipboard.read()` 讀圖屬 §6.4 待實機驗證項，桌面 Chromium 已驗證程式路徑與降級提示。
+
 ### 2026-06-24 — 美容師資訊編輯頁面 UX 精修（M4 範圍）
 
 #### 11.37 美容師資訊編輯頁：頁面標示、文字框自動長高、修正編輯時畫面跳動（`CadreCardDetailView.vue`）

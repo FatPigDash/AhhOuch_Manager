@@ -1,5 +1,7 @@
 // IndexedDB 資料層（Local-First）— 取代 FastAPI 後端
 
+import { processImage } from './imageUtil.js'
+
 const DB_NAME = 'ahhouch_db'
 const DB_VERSION = 1
 
@@ -76,7 +78,9 @@ export async function listCards() {
     let coverUrl = null
     if (card.cover_image_id) {
       const img = await p(db.transaction('images', 'readonly').objectStore('images').get(card.cover_image_id))
-      if (img?.blob) coverUrl = URL.createObjectURL(img.blob)
+      // 列表封面用縮圖即可（舊資料無 thumb 時退回完整圖）。
+      const src = img?.thumb || img?.blob
+      if (src) coverUrl = URL.createObjectURL(src)
     }
     result.push({ id: card.id, name: card.name, short_intro: card.short_intro || '', cover_image: coverUrl })
   }
@@ -111,6 +115,8 @@ export async function getCard(id) {
     images: imgs.map(img => ({
       id: img.id,
       url: img.blob ? URL.createObjectURL(img.blob) : null,
+      // 網格顯示用縮圖；舊資料無 thumb 時退回完整圖。
+      thumb_url: (img.thumb || img.blob) ? URL.createObjectURL(img.thumb || img.blob) : null,
       is_cover: img.id === card.cover_image_id,
     })),
   }
@@ -146,11 +152,13 @@ export async function deleteCard(id) {
 // ── 圖片 ────────────────────────────────────────────────────────────────
 
 export async function addImage(cardId, blob) {
+  // 匯入即最佳化：等比縮放並重新編碼，另存縮圖（容量基準 §6.3 / D5）。
+  const { full, thumb } = await processImage(blob)
   const db = await openDB()
   const id = await p(db.transaction('images', 'readwrite').objectStore('images').add({
-    card_id: Number(cardId), blob, sort_order: Date.now(),
+    card_id: Number(cardId), blob: full, thumb, sort_order: Date.now(),
   }))
-  return { id, url: URL.createObjectURL(blob), is_cover: false }
+  return { id, url: URL.createObjectURL(full), thumb_url: URL.createObjectURL(thumb), is_cover: false }
 }
 
 export async function setCover(imageId) {
