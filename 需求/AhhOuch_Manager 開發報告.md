@@ -837,6 +837,34 @@ git push origin main
 - `npm run build` 成功（44 模組、PWA 產出）。
 - 註：iOS Safari／Android Chrome 之 `capture` 開相機與 `clipboard.read()` 讀圖屬 §6.4 待實機驗證項，桌面 Chromium 已驗證程式路徑與降級提示。
 
+#### 11.41 M4：班表與卡片發布（Web Share API）
+
+**目標**：班表與單張卡片可一鍵透過手機原生分享選單發送至 LINE 等；卡片可選擇是否連同照片發出、用完整或簡短介紹（需求 C4、C5、S5）。開發者不維護任何發布端點（計畫 §4.3）。
+
+**新增 `frontend/desktop/src/share.js`（Web Share 封裝）**：
+- `canShare()` / `canShareFiles(files)`：偵測 `navigator.share` 與 `navigator.canShare({ files })` 支援度。
+- `share({ title, text, files })`：統一入口，回傳 `'shared'`／`'cancelled'`（使用者取消，`AbortError`）／`'unsupported'`。
+- `urlsToFiles(urls, baseName)`：把圖片 Object URL `fetch` 回 Blob 再包成 `File[]` 供 `share({ files })` 使用（副檔名 jpeg→jpg）。
+- 注意：`navigator.share` 必須在使用者手勢中直接呼叫，故各視窗的分享按鈕直接呼叫此處函式。
+
+**`CadreCardDetailView.vue`（卡片發布）**：
+- 發布視窗新增「📤 分享至 LINE 等」主按鈕；原「複製純文字／下載排版圖片」降為次要備援。
+- 新增「連同照片一起發出（N 張）」核取方塊（C4，預設勾選）；介紹版本沿用既有完整／簡短切換（C5）。
+- §6.2 降級：勾選照片但 `canShareFiles` 為否時，退為純文字分享並提示「圖片可用『下載排版圖片』另存後手動傳送」；`navigator.share` 不存在時提示改用備援。
+- `shareSupported` 在 setup 取一次，無 Web Share 的裝置不顯示分享鈕、只留備援。
+
+**`ScheduleEditView.vue`（班表發布）**：
+- 發布視窗同樣新增「📤 分享至 LINE 等」主按鈕，分享 `schedulePublishText` 產生的格式化文字（標題／日期／各人編號＋簡短介紹＋時段／結語）；標題取首行作為分享 title。備援與降級提示同上。
+
+**`api.js`**：移除已無用的 `publishCard`／`publishSchedule` 空 stub（發布改由各視窗以 `share.js` 在使用者手勢中直接呼叫）。
+
+**驗證**（Vite dev server 實機 preview_eval；桌面 Chromium 無原生 `navigator.share`，故以 stub 注入後 SPA 內導航讓元件重新掛載擷取支援度）：
+- `share.js` 單元：桌面 `canShare()=false`、`urlsToFiles` 產出正確 `File`（名稱／type）、`canShareFiles` 不報錯回 false、`share()` 在無支援時回 `'unsupported'`。
+- 卡片端到端：發布視窗顯示分享主鈕、照片核取方塊「連同照片一起發出（1 張）」、兩個備援鈕；點分享 → `navigator.share` 收到 `{ title:'#101', text:'#101', files:['#101_1.jpg'] }`；取消勾選照片後再分享 → `files` 為空（純文字）。
+- 班表端到端：分享 payload `{ title:'M4測試班表', text:'M4測試班表\\n\\n#101' }`，格式正確（截圖佐證）。
+- `npm run build` 成功（PWA 產出）。測試資料已清除。
+- 註：實際彈出系統分享選單、攜帶圖片至 LINE 屬 §6.2 待實機驗證項（iOS 15+ Safari／Android Chrome），桌面已驗證 payload 組裝與降級邏輯。
+
 ### 2026-06-24 — 美容師資訊編輯頁面 UX 精修（M4 範圍）
 
 #### 11.37 美容師資訊編輯頁：頁面標示、文字框自動長高、修正編輯時畫面跳動（`CadreCardDetailView.vue`）

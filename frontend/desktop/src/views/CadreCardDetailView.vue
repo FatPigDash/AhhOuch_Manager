@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import html2canvas from 'html2canvas'
 import { api } from '../api'
+import { canShare, canShareFiles, share, urlsToFiles } from '../share'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
 const router = useRouter()
@@ -48,6 +49,9 @@ const lightboxUrl = ref(null)
 const variant = ref('full') // full | short
 const publishNode = ref(null)
 const copied = ref(false)
+const includePhotos = ref(true)   // C4：是否連同照片一起發出
+const shareNotice = ref('')       // 分享狀態提示（降級／取消等）
+const shareSupported = canShare()
 
 const introText = computed(() =>
   card.value ? (variant.value === 'full' ? card.value.full_intro : card.value.short_intro) : ''
@@ -180,6 +184,27 @@ async function openPublish() {
   }
   showPublish.value = true
   copied.value = false
+  shareNotice.value = ''
+}
+// C4/C5：透過 Web Share API 發布卡片（文字＋可選照片）至 LINE 等。
+async function shareCard() {
+  shareNotice.value = ''
+  try {
+    const { text } = await api.publishText(props.id, variant.value)
+    let files = []
+    if (includePhotos.value && card.value.images.length) {
+      files = await urlsToFiles(card.value.images.map(i => i.url), card.value.name || 'card')
+      // §6.2 降級：裝置不支援檔案分享時，退為純文字並提示。
+      if (files.length && !canShareFiles(files)) {
+        files = []
+        shareNotice.value = '此裝置無法透過系統分享圖片，已改為分享純文字；圖片可用「下載排版圖片」另存後手動傳送。'
+      }
+    }
+    const result = await share({ title: card.value.name, text, files })
+    if (result === 'unsupported') {
+      shareNotice.value = '此裝置不支援系統分享，請改用「複製純文字」或「下載排版圖片」。'
+    }
+  } catch (e) { shareNotice.value = '分享失敗：' + e.message }
 }
 async function copyText() {
   try {
@@ -310,6 +335,12 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
+        <!-- C4：是否連同照片一起發出 -->
+        <label v-if="card.images.length" class="photo-toggle">
+          <input type="checkbox" v-model="includePhotos" />
+          連同照片一起發出（{{ card.images.length }} 張）
+        </label>
+
         <!-- 排版圖片來源（html2canvas 會擷取此區） -->
         <div class="publish-preview" ref="publishNode">
           <img v-if="card.cover_image" :src="card.cover_image" class="pub-cover" alt="" />
@@ -317,12 +348,17 @@ onBeforeUnmount(() => {
           <div class="pub-intro">{{ introText || '（尚未填寫此版本介紹）' }}</div>
         </div>
 
+        <button v-if="shareSupported" class="primary share-main" @click="shareCard">
+          📤 分享至 LINE 等
+        </button>
+        <p v-if="shareNotice" class="hint center notice">{{ shareNotice }}</p>
+
         <div class="modal-actions">
           <button class="ghost" @click="copyText">{{ copied ? '✓ 已複製文字' : '📋 複製純文字' }}</button>
-          <button class="primary" @click="downloadImage">🖼 下載排版圖片</button>
+          <button class="ghost" @click="downloadImage">🖼 下載排版圖片</button>
         </div>
 
-        <p class="hint center">產生後手動貼到群組。</p>
+        <p class="hint center">{{ shareSupported ? '「分享」會開啟系統選單；亦可改用複製文字或下載圖片手動貼到群組。' : '此裝置不支援系統分享，請用複製文字或下載圖片手動貼到群組。' }}</p>
       </div>
     </div>
   </section>
@@ -376,7 +412,11 @@ onBeforeUnmount(() => {
 .pub-cover { width: 100%; max-height: 260px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; }
 .pub-name { font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; }
 .pub-intro { white-space: pre-wrap; line-height: 1.6; color: #243b53; }
-.modal-actions { display: flex; gap: 10px; margin: 16px 0 6px; }
+.photo-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.9rem; color: #334e68; }
+.photo-toggle input { width: 16px; height: 16px; }
+.share-main { display: block; width: 100%; padding: 11px; border: none; border-radius: 8px; margin: 16px 0 6px; font-size: 1rem; }
+.notice { color: #b7791f; }
+.modal-actions { display: flex; gap: 10px; margin: 10px 0 6px; }
 .modal-actions button { flex: 1; padding: 9px; border: none; border-radius: 8px; }
 .auto-publish { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 6px; padding-top: 10px; border-top: 1px solid #f0f2f5; }
 .ap-label { font-size: 0.85rem; color: #627d98; }

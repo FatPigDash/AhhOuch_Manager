@@ -34,7 +34,5 @@ export const api = {
   updateTextTemplate:  (id, data) => db.updateTextTemplate(id, data),
   deleteTextTemplate:  (id) => db.deleteTextTemplate(id),
 
-  // ===== 發布（M4 實作 Web Share API） =====
-  publishCard:     () => Promise.resolve({}),
-  publishSchedule: () => Promise.resolve({}),
+  // 發布改由各視窗以 Web Share API（src/share.js）在使用者手勢中直接呼叫（M4）。
 }

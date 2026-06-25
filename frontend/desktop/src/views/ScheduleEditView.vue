@@ -3,6 +3,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import html2canvas from 'html2canvas'
 import { api } from '../api'
+import { canShare, share } from '../share'
 import TextTemplateBar from '../components/TextTemplateBar.vue'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
@@ -20,6 +21,8 @@ const showPublish = ref(false)
 const publishText = ref('')
 const publishNode = ref(null)
 const copied = ref(false)
+const shareNotice = ref('')
+const shareSupported = canShare()
 
 async function load() {
   try {
@@ -172,10 +175,22 @@ function toggleShift(entry, slot) {
 // 發布 (S11)
 async function openPublish() {
   copied.value = false
+  shareNotice.value = ''
   try {
     publishText.value = (await api.schedulePublishText(props.id)).text
     showPublish.value = true
   } catch (e) { error.value = e.message }
+}
+// S5：透過 Web Share API 發布班表文字至 LINE 等。
+async function shareSchedule() {
+  shareNotice.value = ''
+  try {
+    const title = (schedule.value.title || '班表').split('\n')[0]
+    const result = await share({ title, text: publishText.value })
+    if (result === 'unsupported') {
+      shareNotice.value = '此裝置不支援系統分享，請改用「複製純文字」或「下載排版圖片」。'
+    }
+  } catch (e) { shareNotice.value = '分享失敗：' + e.message }
 }
 async function copyText() {
   try {
@@ -324,12 +339,18 @@ onMounted(() => { load(); loadCards() })
         <div class="publish-preview" ref="publishNode">
           <pre class="pub-text">{{ publishText }}</pre>
         </div>
+
+        <button v-if="shareSupported" class="primary share-main" @click="shareSchedule">
+          📤 分享至 LINE 等
+        </button>
+        <p v-if="shareNotice" class="hint center notice">{{ shareNotice }}</p>
+
         <div class="modal-actions">
           <button class="ghost" @click="copyText">{{ copied ? '✓ 已複製文字' : '📋 複製純文字' }}</button>
-          <button class="primary" @click="downloadImage">🖼 下載排版圖片</button>
+          <button class="ghost" @click="downloadImage">🖼 下載排版圖片</button>
         </div>
 
-        <p class="hint center">產生後手動貼到群組；草稿已自動保存，可再次編輯發布。</p>
+        <p class="hint center">{{ shareSupported ? '「分享」會開啟系統選單。草稿已自動保存，可再次編輯發布。' : '產生後手動貼到群組；草稿已自動保存，可再次編輯發布。' }}</p>
       </div>
     </div>
   </section>
@@ -391,7 +412,9 @@ button.primary { background: #2680c2; color: #fff; border: none; border-radius: 
 .modal-head .x { border: none; background: #e4e7eb; border-radius: 8px; width: 30px; height: 30px; }
 .publish-preview { border: 1px solid #e4e7eb; border-radius: 12px; padding: 16px; background: #fff; }
 .pub-text { white-space: pre-wrap; font-family: inherit; font-size: 1rem; line-height: 1.6; color: #1f2933; margin: 0; }
-.modal-actions { display: flex; gap: 10px; margin: 16px 0 6px; }
+.share-main { display: block; width: 100%; padding: 11px; margin: 16px 0 6px; font-size: 1rem; }
+.notice { color: #b7791f; }
+.modal-actions { display: flex; gap: 10px; margin: 10px 0 6px; }
 .modal-actions button { flex: 1; padding: 9px; border: none; border-radius: 8px; }
 .auto-publish { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 6px; padding-top: 10px; border-top: 1px solid #f0f2f5; }
 .ap-label { font-size: 0.85rem; color: #627d98; }
