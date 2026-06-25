@@ -54,6 +54,32 @@ function txDone(t) {
 
 function now() { return new Date().toISOString() }
 
+// ── 備份：全資料匯出／還原（M6） ─────────────────────────────────────────
+
+const ALL_STORES = ['cards', 'images', 'schedules', 'entries', 'text_templates']
+
+// 匯出所有 store 的原始記錄（images 含 blob/thumb 的 Blob 物件，由 backup.js 抽出成檔）。
+export async function dumpAll() {
+  const db = await openDB()
+  const out = {}
+  for (const name of ALL_STORES) {
+    out[name] = await p(db.transaction(name, 'readonly').objectStore(name).getAll())
+  }
+  return out
+}
+
+// 整批覆蓋還原：清空所有 store 後寫回備份資料（保留原 id）。單一交易確保原子性。
+export async function restoreAll(data) {
+  const db = await openDB()
+  const t = db.transaction(ALL_STORES, 'readwrite')
+  for (const name of ALL_STORES) {
+    const store = t.objectStore(name)
+    store.clear()
+    for (const rec of (data[name] || [])) store.put(rec)
+  }
+  await txDone(t)
+}
+
 // ── 時間輔助 ────────────────────────────────────────────────────────────
 
 // 把 "1830" 正規化為 "18:30"；已有冒號則原樣返回

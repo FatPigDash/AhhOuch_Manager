@@ -6,6 +6,7 @@
   <nav class="cadre-nav">
     <router-link :to="{ name: 'cadre-list' }" class="tab">資訊卡片</router-link>
     <router-link :to="{ name: 'schedule-list' }" class="tab">班表</router-link>
+    <router-link :to="{ name: 'backup' }" class="tab">備份</router-link>
   </nav>
 </template>
 

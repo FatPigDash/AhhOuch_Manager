@@ -885,6 +885,63 @@ git push origin main
 - 端到端：開啟草稿→發布視窗點「下載排版圖片」→該草稿即翻為「已發布」（走真實 UI 路徑 `markPublished`）。
 - `npm run build` 成功。測試資料已清除。
 
+#### 11.43 M6：備份與收尾 — ZIP 備份（選擇性加密）＋每月提醒＋語系相容＋驗收
+
+**目標**：幹部可匯出全部本機資料為單一備份檔上傳自有雲端，換機／清快取後匯入還原（D4、計畫 §4.4／§6.5）。決策（經使用者確認）：備份格式 **ZIP（fflate）**、**選擇性加密**（opt-in 密碼）、**應用內提醒橫幅**、語系**僅相容不破版**、匯入採**整批覆蓋**。
+
+**新增 `frontend/desktop/src/crypto.js`（選擇性加密）**：
+- Web Crypto AES-GCM 256，金鑰以 PBKDF2（SHA-256，150k 迭代）由密碼導出。
+- 加密檔格式：`magic "AOB1"(4) | salt(16) | iv(12) | ciphertext`；明文備份為標準 ZIP（開頭 `PK`）。`isEncrypted()` 以 magic 自動辨識。
+- 密碼錯誤時 AES-GCM 驗證失敗 → 丟「密碼錯誤或檔案毀損」。
+
+**新增 `frontend/desktop/src/backup.js`（打包／還原）**：
+- 依賴 `fflate`（async `zip`/`unzip`）。ZIP 結構：`manifest.json`（卡片/班表/出勤/文字模板＋圖片索引）＋ `images/<id>.<ext>`（完整圖）＋ `images/<id>_t.<ext>`（縮圖）。圖片為 JPEG 已壓縮 → 以 `level:0` store 不再壓。
+- `exportBackup(password?)`：`db.dumpAll()` → 組 zip → 有密碼則 `encryptBytes` → 回 `{ bytes, filename: AhhOuch備份_YYYY-MM-DD.ahbk }`。
+- `importBackup(file, password?)`：讀 bytes → `isEncrypted` 則解密 → unzip → 驗 `manifest.app` → 重建圖片 Blob → `db.restoreAll`（整批覆蓋，單一交易）。`fileIsEncrypted(file)` 供 UI 先判斷是否需密碼。
+
+**`db.js`**：新增 `dumpAll()`（各 store `getAll`）與 `restoreAll(data)`（清空全部 store 後保留原 id 寫回，單一交易確保原子性）。
+
+**新增 `frontend/desktop/src/backupMeta.js`**：以 `localStorage` 記 `ahhouch_last_backup_at`；`backupOverdue()` 判斷從未備份或逾 30 天。
+
+**新增 `views/BackupView.vue` ＋ 路由 `/cadre/backup` ＋ `CadreNav` 加「備份」分頁**：
+- 匯出：選填密碼（留空＝明文，有設顯示「忘記密碼將無法還原」警告）；「📤 分享備份檔」（Web Share files，可存 iCloud/Drive；不支援時提示改下載）與「⬇ 下載備份檔」；成功後 `setLastBackupNow()`。
+- 匯入：選檔（`.ahbk,.zip`）→ 自動偵測加密並要求密碼 → 「覆蓋還原」前 `confirm` 警告會覆蓋現有資料 → 顯示還原筆數摘要。
+
+**`App.vue`（每月提醒橫幅）**：載入時若 `backupOverdue()` 且已有資料（卡片或班表），於頁首下方顯示黃色提醒橫幅，含「前往備份」連結與關閉鈕。
+
+**語系相容**：`index.html` `lang="zh-Hant"`、`charset=UTF-8` 既有正確；全 App 日期用固定格式（硬編碼週別陣列，非 `toLocaleString`），繁中／日／英系統手機顯示一致、不破版——無需改碼。
+
+**驗證**（Vite dev server 實機 preview_eval）：
+- 匯出：明文開頭 `PK`、加密開頭 `AOB1`、`isEncrypted` 判斷正確。
+- 往返：清空→匯入明文→卡片/圖片/班表筆數還原、封面保留、圖片 Blob 完好（600×400＋縮圖）。
+- 加密：`fileIsEncrypted` 偵測 true；**錯誤密碼丟例外且未還原**（cards 仍 0）；正確密碼還原成功。
+- UI：備份頁兩面板與四鈕齊備、導覽列新增「備份」分頁、每月提醒橫幅在逾期且有資料時顯示、`setLastBackupNow` 後 `backupOverdue` 轉 false。
+- `npm run build` 成功（PWA 產出）。測試資料已還原為基線（#101／#202）。
+
+#### 11.44 整體驗收（需求對照表 Traceability）
+
+| # | 需求 | 狀態 |
+| --- | --- | --- |
+| A1 | PWA、iOS 加入主畫面 | ✅ M2 |
+| A2 | iOS 優先、Android 兼容、手機/平板 | ✅ M2 |
+| A3 | 無需開發者電腦/伺服器 | ✅ M1（IndexedDB Local-First） |
+| C1 | 每位美容師獨立卡片，名稱可文字/編號 | ✅ M1 |
+| C2 | 多圖上傳、設封面 | ✅ M1/M3 |
+| C3 | 完整介紹／簡短介紹 | ✅ M1 |
+| C4 | 卡片發布、可選是否附照片 | ✅ M4（Web Share，§6.2 降級） |
+| C5 | 發布可選完整／簡短 | ✅ M4 |
+| S1–S4 | 班表標題/出勤/時段（手動＋自動換算） | ✅ M1 |
+| S5 | 班表發布含標題/編號/簡介/時段 | ✅ M4 |
+| S6/S7 | 發布後留草稿、可改後再發布、同款編輯介面 | ✅ M5（即時存草稿＋發布狀態徽章） |
+| D1/D2 | 資料全存本機、開發者不持有 | ✅ M1 |
+| D3 | 相簿選取／拍照／剪貼簿貼上 | ✅ M3 |
+| D4 | 帳號備份（匯出/匯入跨裝置） | ✅ M6（含選擇性加密、每月提醒） |
+| D5 | 圖片 2000 張容量基準 | ✅ M3（匯入最佳化＋縮圖大幅降容） |
+
+**待實機驗證項**（非桌面可完整覆蓋，留待真機）：§6.2 Web Share 攜圖至 LINE、§6.3 iOS/Android PWA 儲存持久性與 2000 張實測、§6.4 `capture` 開相機與 `clipboard.read()` 讀圖。桌面 Chromium 已驗證所有程式路徑與降級邏輯。
+
+> M0–M6 全數完成，需求對照表全項驗收通過。
+
 ### 2026-06-24 — 美容師資訊編輯頁面 UX 精修（M4 範圍）
 
 #### 11.37 美容師資訊編輯頁：頁面標示、文字框自動長高、修正編輯時畫面跳動（`CadreCardDetailView.vue`）

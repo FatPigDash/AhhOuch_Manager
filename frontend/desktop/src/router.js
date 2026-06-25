@@ -3,6 +3,7 @@ import CadreCardListView from './views/CadreCardListView.vue'
 import CadreCardDetailView from './views/CadreCardDetailView.vue'
 import ScheduleListView from './views/ScheduleListView.vue'
 import ScheduleEditView from './views/ScheduleEditView.vue'
+import BackupView from './views/BackupView.vue'
 
 // hash 模式：GitHub Pages 靜態托管時免伺服器端 rewrite，重新整理不會 404。
 const routes = [
@@ -11,6 +12,7 @@ const routes = [
   { path: '/cadre/card/:id', name: 'cadre-card', component: CadreCardDetailView, props: true },
   { path: '/cadre/schedules', name: 'schedule-list', component: ScheduleListView },
   { path: '/cadre/schedule/:id', name: 'schedule-edit', component: ScheduleEditView, props: true },
+  { path: '/cadre/backup', name: 'backup', component: BackupView },
 ]
 
 export default createRouter({
