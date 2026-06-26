@@ -20,6 +20,7 @@ const computedShifts = reactive({}) // { [entryId]: [slot,...] }
 
 const showPublish = ref(false)
 const publishText = ref('')
+const publishHtml = ref('')
 const publishNode = ref(null)
 const copied = ref(false)
 const shareNotice = ref('')
@@ -182,7 +183,9 @@ async function openPublish() {
   shareNotice.value = ''
   tgNotice.value = ''
   try {
-    publishText.value = (await api.schedulePublishText(props.id)).text
+    const payload = await api.schedulePublishText(props.id)
+    publishText.value = payload.text
+    publishHtml.value = payload.html
     try { targets.value = (await api.listTargets()).filter(t => t.enabled) } catch (_) { targets.value = [] }
     showPublish.value = true
   } catch (e) { error.value = e.message }
@@ -192,7 +195,7 @@ async function sendToTelegram(target) {
   tgNotice.value = ''
   tgSending.value = true
   try {
-    await tgSendText(target.token, target.target_id, publishText.value)
+    await tgSendText(target.token, target.target_id, publishHtml.value || publishText.value, { parse_mode: 'HTML' })
     tgNotice.value = `✓ 已發送到「${target.name}」`
     await markPublished()
   } catch (e) {

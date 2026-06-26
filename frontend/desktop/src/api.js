@@ -26,7 +26,7 @@ export const api = {
   updateEntry:         (entryId, data)       => db.updateEntry(entryId, data),
   deleteEntry:         (entryId)             => db.deleteEntry(entryId),
   shiftSlots:          (start)               => Promise.resolve({ slots: db.calcShiftSlots(start) }),
-  schedulePublishText: (id)                  => db.schedulePublishText(id).then(text => ({ text })),
+  schedulePublishText: (id)                  => db.schedulePublishText(id),
   markSchedulePublished: (id)                => db.markSchedulePublished(id),
 
   // ===== 文字模板 =====

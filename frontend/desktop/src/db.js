@@ -258,7 +258,6 @@ export async function getSchedule(id) {
   const s = await p(db.transaction('schedules', 'readonly').objectStore('schedules').get(numId))
   if (!s) throw new Error('找不到班表')
   const entries = await p(db.transaction('entries', 'readonly').objectStore('entries').index('by_schedule').getAll(numId))
-  entries.sort((a, b) => (a.sort_order ?? a.id) - (b.sort_order ?? b.id))
   const enriched = []
   for (const e of entries) {
     const card = await p(db.transaction('cards', 'readonly').objectStore('cards').get(e.cadre_card_id))
@@ -267,11 +266,15 @@ export async function getSchedule(id) {
       cadre_card_id: e.cadre_card_id,
       name: card ? card.name : '（已刪除）',
       short_intro: card ? (card.short_intro || '') : '',
+      info_link: card ? (card.info_link || '') : '',
       slots: e.slots || [],
-      time_mode: e.time_mode || 'manual',
+      time_mode: e.time_mode || 'auto',
       auto_start: e.auto_start || '',
+      _sort_order: card ? (card.sort_order ?? card.id) : Infinity
     })
   }
+  enriched.sort((a, b) => a._sort_order - b._sort_order)
+  enriched.forEach(e => delete e._sort_order)
   return { id: s.id, title: s.title || '', footer: s.footer || '', date: s.date || '', published_at: s.published_at || null, entries: enriched }
 }
 
@@ -321,7 +324,7 @@ export async function addEntry(scheduleId, cadreCardId) {
   const schedId = Number(scheduleId)
   const id = await p(db.transaction('entries', 'readwrite').objectStore('entries').add({
     schedule_id: schedId, cadre_card_id: Number(cadreCardId),
-    slots: [], time_mode: 'manual', auto_start: '', sort_order: Date.now(),
+    slots: [], time_mode: 'auto', auto_start: '', sort_order: Date.now(),
   }))
   // 更新班表的 updated_at
   const t2 = db.transaction('schedules', 'readwrite')
@@ -448,21 +451,49 @@ export async function cardPublishText(cardId, variant) {
 
 const WEEKDAY_TW = ['日', '一', '二', '三', '四', '五', '六']
 
+function escapeHtml(str) {
+  if (!str) return ''
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
 export async function schedulePublishText(scheduleId) {
   const s = await getSchedule(Number(scheduleId))
-  const lines = []
+  const linesText = []
+  const linesHtml = []
   if (s.date) {
     const [y, mo, d] = s.date.split('-').map(Number)
     const wd = WEEKDAY_TW[new Date(y, mo - 1, d).getDay()]
-    lines.push(`${y}/${String(mo).padStart(2,'0')}/${String(d).padStart(2,'0')} (${wd})`)
+    const dateStr = `${y}/${String(mo).padStart(2,'0')}/${String(d).padStart(2,'0')} (${wd})`
+    linesText.push(dateStr)
+    linesHtml.push(escapeHtml(dateStr))
   }
-  if (s.title?.trim()) lines.push(s.title.trim())
+  if (s.title?.trim()) {
+    linesText.push(s.title.trim())
+    linesHtml.push(escapeHtml(s.title.trim()))
+  }
   for (const e of s.entries) {
-    lines.push('')
-    lines.push(e.name)
-    if (e.short_intro?.trim()) lines.push(e.short_intro.trim())
-    if (e.slots?.length) lines.push(e.slots.join('、'))
+    linesText.push('')
+    linesHtml.push('')
+    linesText.push(e.name)
+    if (e.info_link) {
+      linesHtml.push(`<a href="${escapeHtml(e.info_link)}">${escapeHtml(e.name)}</a>`)
+    } else {
+      linesHtml.push(escapeHtml(e.name))
+    }
+    if (e.short_intro?.trim()) {
+      linesText.push(e.short_intro.trim())
+      linesHtml.push(escapeHtml(e.short_intro.trim()))
+    }
+    if (e.slots?.length) {
+      linesText.push(e.slots.join('、'))
+      linesHtml.push(escapeHtml(e.slots.join('、')))
+    }
   }
-  if (s.footer?.trim()) { lines.push(''); lines.push(s.footer.trim()) }
-  return lines.join('\n')
+  if (s.footer?.trim()) { 
+    linesText.push('')
+    linesHtml.push('')
+    linesText.push(s.footer.trim()) 
+    linesHtml.push(escapeHtml(s.footer.trim())) 
+  }
+  return { text: linesText.join('\n'), html: linesHtml.join('\n') }
 }

@@ -49,9 +49,11 @@ async function tgCall(token, method, body, isForm) {
 }
 
 // 發送純文字（班表）。
-export async function sendText(token, chatId, text) {
+export async function sendText(token, chatId, text, opts = {}) {
   if (!chatId) throw new Error('尚未設定群組編號')
-  return tgCall(token, 'sendMessage', { chat_id: chatId, text })
+  const body = { chat_id: chatId, text }
+  if (opts.parse_mode) body.parse_mode = opts.parse_mode
+  return tgCall(token, 'sendMessage', body)
 }
 
 // 發送卡片：files 為 File/Blob 陣列（可空），text 為文字（可空）。
