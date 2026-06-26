@@ -3,7 +3,7 @@
 import * as db from './db.js'
 
 export const api = {
-  meta: () => fetch('/api/meta').then(r => r.json()).catch(() => ({ title: 'AhhOuch_Manager' })),
+  meta: () => Promise.resolve({ title: `AhhOuch_Manager ${__APP_VERSION__}` }),
 
   // ===== 美容師資訊卡片 =====
   listCadreCards:   ()           => db.listCards(),

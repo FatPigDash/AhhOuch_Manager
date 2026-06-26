@@ -1,8 +1,23 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
+import fs from 'fs'
+import path from 'path'
+
+let appVersion = 'unknown'
+try {
+  const tomlPath = path.resolve(__dirname, '../../app.toml')
+  if (fs.existsSync(tomlPath)) {
+    const tomlContent = fs.readFileSync(tomlPath, 'utf-8')
+    const match = tomlContent.match(/version\s*=\s*"([^"]+)"/)
+    if (match) appVersion = match[1]
+  }
+} catch (e) {}
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(`v${appVersion}`)
+  },
   plugins: [
     vue(),
     VitePWA({
