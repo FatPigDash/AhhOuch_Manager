@@ -4,7 +4,7 @@ import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import html2canvas from 'html2canvas'
 import { api } from '../api'
 import { canShare, canShareFiles, share, urlsToFiles } from '../share'
-import { sendCard as tgSendCard } from '../telegram'
+import { sendCard as tgSendCard, editCard as tgEditCard, isMessageNotFoundError } from '../telegram'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
 const router = useRouter()
@@ -50,7 +50,9 @@ const lightboxUrl = ref(null)
 const variant = ref('full') // full | short
 const publishNode = ref(null)
 const copied = ref(false)
-const includePhotos = ref(true)   // C4：是否連同照片一起發出
+const selectedImageIds = ref(new Set())  // 發布時使用者勾選的圖片 ID
+const confirmTarget = ref(null)          // 等待使用者確認的 Telegram 目標
+const publishMode = ref('new')           // 'new'（新訊息）| 'edit'（覆蓋舊訊息）
 const shareNotice = ref('')       // 分享狀態提示（降級／取消等）
 const shareSupported = canShare()
 const targets = ref([])           // Telegram 發布目標（啟用中）
@@ -61,13 +63,19 @@ const introText = computed(() =>
   card.value ? (variant.value === 'full' ? card.value.full_intro : card.value.short_intro) : ''
 )
 
-// 是否有尚未儲存的文字欄位變更（名字 / 完整介紹 / 簡短介紹）。
+// 使用者目前勾選要一起發出的圖片物件陣列。
+const selectedImages = computed(() =>
+  card.value ? card.value.images.filter(img => selectedImageIds.value.has(img.id)) : []
+)
+
+// 是否有尚未儲存的文字欄位變更（名字 / 完整介紹 / 簡短介紹 / 連結）。
 const dirty = computed(() =>
   !!card.value && !!saved.value && (
     card.value.name !== saved.value.name ||
     card.value.full_intro !== saved.value.full_intro ||
     card.value.short_intro !== saved.value.short_intro ||
-    card.value.info_link !== saved.value.info_link
+    card.value.info_link !== saved.value.info_link ||
+    card.value.info_link_label !== saved.value.info_link_label
   )
 )
 
@@ -77,6 +85,7 @@ function snapshot() {
     full_intro: card.value.full_intro,
     short_intro: card.value.short_intro,
     info_link: card.value.info_link,
+    info_link_label: card.value.info_link_label,
   }
 }
 
@@ -98,6 +107,7 @@ async function save() {
       full_intro: card.value.full_intro,
       short_intro: card.value.short_intro,
       info_link: card.value.info_link,
+      info_link_label: card.value.info_link_label,
     })
     card.value.name = name
     snapshot()
@@ -180,6 +190,22 @@ async function removeImage(img) {
 }
 
 // --- 發布 (S5) ---
+// 初始化圖片勾選（預設全選）。
+function initImageSelection() {
+  selectedImageIds.value = new Set(card.value?.images.map(img => img.id) ?? [])
+}
+function toggleImage(img) {
+  const ids = new Set(selectedImageIds.value)
+  if (ids.has(img.id)) ids.delete(img.id)
+  else ids.add(img.id)
+  selectedImageIds.value = ids
+}
+function selectAllImages() {
+  selectedImageIds.value = new Set(card.value.images.map(i => i.id))
+}
+function clearAllImages() {
+  selectedImageIds.value = new Set()
+}
 async function openPublish() {
   if (dirty.value) {
     if (!confirm('發布前需先儲存目前的變更，要儲存並繼續嗎？')) return
@@ -190,32 +216,91 @@ async function openPublish() {
   copied.value = false
   shareNotice.value = ''
   tgNotice.value = ''
+  confirmTarget.value = null
+  initImageSelection()
   try { targets.value = (await api.listTargets()).filter(t => t.enabled) } catch (_) { targets.value = [] }
 }
-// 發送到 Telegram（純前端直連）。沿用發布視窗的介紹版本與「連同照片」選項。
+// 依 chat_id 與 message_id 組出 Telegram 訊息連結。
+// 私有群組的 chat_id 格式為 -100xxxxxxxxxx，連結需去掉 -100 前綴。
+function buildTgLink(chatId, messageId) {
+  if (!chatId || !messageId) return ''
+  const id = String(chatId).replace(/^-100/, '')
+  return `https://t.me/c/${id}/${messageId}`
+}
+// 從 t.me 連結解析出 message_id（整數）。
+function parseMsgId(link) {
+  if (!link) return null
+  const m = link.match(/\/(\d+)$/)
+  return m ? Number(m[1]) : null
+}
+
+// 使用者點擊 Telegram 目標時，先進入確認步驟；預設為新訊息模式。
+function requestConfirm(target) {
+  tgNotice.value = ''
+  confirmTarget.value = target
+  publishMode.value = card.value?.info_link ? 'edit' : 'new'
+}
+// 確認後執行實際發送。
 async function sendToTelegram(target) {
+  confirmTarget.value = null
   tgNotice.value = ''
   tgSending.value = true
   try {
     const { text } = await api.publishText(props.id, variant.value)
     let files = []
-    if (includePhotos.value && card.value.images.length) {
-      files = await urlsToFiles(card.value.images.map(i => i.url), card.value.name || 'card')
+    if (selectedImages.value.length) {
+      files = await urlsToFiles(selectedImages.value.map(i => i.url), card.value.name || 'card')
     }
-    await tgSendCard(target.token, target.target_id, files, text)
-    tgNotice.value = `✓ 已發送到「${target.name}」`
+
+    if (publishMode.value === 'edit') {
+      // 覆蓋模式：修改現有訊息
+      const msgId = parseMsgId(card.value.info_link)
+      try {
+        await tgEditCard(target.token, target.target_id, msgId, files, text)
+        tgNotice.value = `✓ 已更新「${target.name}」的訊息`
+        if (card.value.info_link_label !== target.name) {
+          card.value.info_link_label = target.name
+          try { await api.updateCadreCard(props.id, { info_link_label: target.name }); snapshot() } catch (_) {}
+        }
+      } catch (editErr) {
+        if (isMessageNotFoundError(editErr)) {
+          // 原訊息已被刪除，自動改為發布新訊息
+          tgNotice.value = '原訊息不存在，自動改為發布新訊息…'
+          const { messageId } = await tgSendCard(target.token, target.target_id, files, text)
+          tgNotice.value = `✓ 已發布新訊息到「${target.name}」（原訊息已刪除）`
+          const link = buildTgLink(target.target_id, messageId)
+          if (link) {
+            card.value.info_link = link
+            card.value.info_link_label = target.name
+            try { await api.updateCadreCard(props.id, { info_link: link, info_link_label: target.name }); snapshot() } catch (_) {}
+          }
+        } else {
+          throw editErr
+        }
+      }
+    } else {
+      // 全新訊息模式
+      const { messageId } = await tgSendCard(target.token, target.target_id, files, text)
+      tgNotice.value = `✓ 已發送到「${target.name}」`
+      const link = buildTgLink(target.target_id, messageId)
+      if (link) {
+        card.value.info_link = link
+        card.value.info_link_label = target.name
+        try { await api.updateCadreCard(props.id, { info_link: link, info_link_label: target.name }); snapshot() } catch (_) {}
+      }
+    }
   } catch (e) {
     tgNotice.value = `發送到「${target.name}」失敗：${e.message}`
   } finally { tgSending.value = false }
 }
-// C4/C5：透過 Web Share API 發布卡片（文字＋可選照片）至 LINE 等。
+// C4/C5：透過 Web Share API 發布卡片（文字＋勾選照片）至 LINE 等。
 async function shareCard() {
   shareNotice.value = ''
   try {
     const { text } = await api.publishText(props.id, variant.value)
     let files = []
-    if (includePhotos.value && card.value.images.length) {
-      files = await urlsToFiles(card.value.images.map(i => i.url), card.value.name || 'card')
+    if (selectedImages.value.length) {
+      files = await urlsToFiles(selectedImages.value.map(i => i.url), card.value.name || 'card')
       // §6.2 降級：裝置不支援檔案分享時，退為純文字並提示。
       if (files.length && !canShareFiles(files)) {
         files = []
@@ -227,6 +312,10 @@ async function shareCard() {
       shareNotice.value = '此裝置不支援系統分享，請改用「複製純文字」或「下載排版圖片」。'
     }
   } catch (e) { shareNotice.value = '分享失敗：' + e.message }
+}
+// 手動清空連結時一並清除來源標籤。
+function onLinkInput() {
+  if (!card.value.info_link) card.value.info_link_label = ''
 }
 async function copyText() {
   try {
@@ -317,6 +406,34 @@ onBeforeUnmount(() => {
           <span>簡短介紹</span>
           <textarea v-model="card.short_intro" v-autoresize rows="2"></textarea>
         </label>
+
+        <!-- Telegram 訊息連結（發布後自動填入，亦可手動貼上或清除） -->
+        <div class="field">
+          <span>Telegram 訊息連結
+            <span class="field-hint">發布到 Telegram 後自動填入，可點擊開啟或手動編輯</span>
+          </span>
+          <!-- 發布設定名稱標籤 -->
+          <div v-if="card.info_link_label" class="link-label-row">
+            <span class="link-label-badge">✈ {{ card.info_link_label }}</span>
+            <span class="link-label-hint">此連結對應上方發布設定</span>
+          </div>
+          <div class="link-row">
+            <input
+              v-model="card.info_link"
+              placeholder="發布到 Telegram 後自動填入"
+              class="link-input"
+              @input="onLinkInput"
+            />
+            <a
+              v-if="card.info_link"
+              :href="card.info_link"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="link-btn ghost"
+              title="在新分頁開啟"
+            >🔗 開啟</a>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -357,11 +474,27 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <!-- C4：是否連同照片一起發出 -->
-        <label v-if="card.images.length" class="photo-toggle">
-          <input type="checkbox" v-model="includePhotos" />
-          連同照片一起發出（{{ card.images.length }} 張）
-        </label>
+        <!-- 圖片選擇（逐張勾選，預設全選） -->
+        <div v-if="card.images.length" class="photo-select-section">
+          <div class="photo-select-header">
+            <span class="photo-select-label">附上圖片（{{ selectedImages.length }}/{{ card.images.length }} 張）</span>
+            <button class="text-action" @click="selectAllImages">全選</button>
+            <button class="text-action" @click="clearAllImages">取消全選</button>
+          </div>
+          <div class="photo-select-grid">
+            <button
+              v-for="img in card.images"
+              :key="img.id"
+              class="photo-cell"
+              :class="{ selected: selectedImageIds.has(img.id) }"
+              @click="toggleImage(img)"
+            >
+              <img :src="img.thumb_url || img.url" alt="" />
+              <span v-if="selectedImageIds.has(img.id)" class="photo-check">✓</span>
+              <span v-if="img.is_cover" class="photo-cover-badge">封面</span>
+            </button>
+          </div>
+        </div>
 
         <!-- 排版圖片來源（html2canvas 會擷取此區） -->
         <div class="publish-preview" ref="publishNode">
@@ -375,12 +508,62 @@ onBeforeUnmount(() => {
         </button>
         <p v-if="shareNotice" class="hint center notice">{{ shareNotice }}</p>
 
-        <!-- 一鍵發送到 Telegram（依「發布設定」的目標） -->
+        <!-- Telegram 目標選取 → 確認視窗 -->
         <div v-if="targets.length" class="tg-section">
-          <span class="tg-label">發送到 Telegram</span>
-          <button v-for="t in targets" :key="t.id" class="tg-btn" :disabled="tgSending" @click="sendToTelegram(t)">
-            ✈ {{ t.name }}
-          </button>
+          <template v-if="!confirmTarget">
+            <span class="tg-label">發送到 Telegram</span>
+            <button
+              v-for="t in targets" :key="t.id"
+              class="tg-btn" :disabled="tgSending"
+              @click="requestConfirm(t)"
+            >
+              ✈ {{ t.name }}
+            </button>
+          </template>
+
+          <!-- 確認視窗：顯示目標、圖片摘要、文字版本，讓使用者二次確認 -->
+          <div v-else class="confirm-panel">
+            <div class="confirm-title">確認發送到「{{ confirmTarget.name }}」？</div>
+            <div class="confirm-summary">
+              <span class="confirm-tag">{{ variant === 'full' ? '完整介紹' : '簡短介紹' }}</span>
+              <span class="confirm-tag" v-if="selectedImages.length">附 {{ selectedImages.length }} 張圖片</span>
+              <span class="confirm-tag empty" v-else>不附圖片</span>
+            </div>
+            <div v-if="selectedImages.length" class="confirm-img-row">
+              <img
+                v-for="img in selectedImages.slice(0, 6)"
+                :key="img.id"
+                :src="img.thumb_url || img.url"
+                class="confirm-thumb"
+                alt=""
+              />
+              <span v-if="selectedImages.length > 6" class="confirm-more">+{{ selectedImages.length - 6 }}</span>
+            </div>
+
+            <!-- 有既有連結時，讓使用者選擇覆蓋還是新訊息 -->
+            <div v-if="card.info_link" class="publish-mode-section">
+              <div class="publish-mode-title">此卡片已有 Telegram 訊息連結</div>
+              <label class="mode-option">
+                <input type="radio" v-model="publishMode" value="new" />
+                <span class="mode-label">發布全新訊息</span>
+                <span class="mode-desc">在群組新增一則訊息</span>
+              </label>
+              <label class="mode-option">
+                <input type="radio" v-model="publishMode" value="edit" />
+                <span class="mode-label">覆蓋舊有訊息</span>
+                <span class="mode-desc">修改現有訊息的內容（文字與圖片）</span>
+              </label>
+              <p v-if="card.info_link_label && card.info_link_label !== confirmTarget.name" class="mode-warning">
+                ⚠ 現有連結來自「{{ card.info_link_label }}」，與目前選擇的目標不同，請確認是否為同一群組的連結。
+              </p>
+            </div>
+            <div class="confirm-actions">
+              <button class="primary" :disabled="tgSending" @click="sendToTelegram(confirmTarget)">
+                {{ tgSending ? (publishMode === 'edit' ? '更新中…' : '發送中…') : (publishMode === 'edit' ? '✏ 確認覆蓋' : '✈ 確認發送') }}
+              </button>
+              <button class="ghost" :disabled="tgSending" @click="confirmTarget = null">取消</button>
+            </div>
+          </div>
         </div>
         <p v-if="tgNotice" class="hint center notice">{{ tgNotice }}</p>
 
@@ -429,6 +612,13 @@ onBeforeUnmount(() => {
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; color: #486581; }
 .field textarea { padding: 8px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.95rem; color: #1f2933; resize: none; overflow-y: hidden; line-height: 1.5; }
 .field input { padding: 8px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.95rem; color: #1f2933; }
+.field-hint { font-size: 0.78rem; color: #9fb3c8; font-weight: 400; margin-left: 6px; }
+.link-label-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.link-label-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; background: #e3f0fb; color: #0a558c; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+.link-label-hint { font-size: 0.78rem; color: #9fb3c8; }
+.link-row { display: flex; gap: 8px; align-items: center; }
+.link-input { flex: 1; padding: 8px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.9rem; color: #1f2933; min-width: 0; }
+.link-btn { display: inline-flex; align-items: center; gap: 4px; padding: 7px 12px; border-radius: 8px; font-size: 0.85rem; text-decoration: none; white-space: nowrap; border: none; cursor: pointer; }
 
 .modal-backdrop { position: fixed; inset: 0; background: rgba(16,42,67,0.45); display: flex; align-items: center; justify-content: center; z-index: 50; }
 .modal { background: #fff; border-radius: 14px; width: 420px; max-width: 92vw; max-height: 90vh; overflow-y: auto; padding: 18px; }
@@ -443,9 +633,40 @@ onBeforeUnmount(() => {
 .pub-cover { width: 100%; max-height: 260px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; }
 .pub-name { font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; }
 .pub-intro { white-space: pre-wrap; line-height: 1.6; color: #243b53; }
-.photo-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.9rem; color: #334e68; }
-.photo-toggle input { width: 16px; height: 16px; }
 .share-main { display: block; width: 100%; padding: 11px; border: none; border-radius: 8px; margin: 16px 0 6px; font-size: 1rem; }
+/* 圖片選擇區 */
+.photo-select-section { margin-bottom: 14px; }
+.photo-select-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.photo-select-label { font-size: 0.85rem; color: #627d98; flex: 1; }
+.text-action { background: none; border: none; color: #2680c2; font-size: 0.82rem; cursor: pointer; padding: 2px 4px; }
+.text-action:hover { text-decoration: underline; }
+.photo-select-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.photo-cell { position: relative; width: 70px; height: 70px; padding: 0; border: 2px solid #cbd2d9; border-radius: 8px; overflow: hidden; cursor: pointer; background: #f0f4f8; transition: border-color 0.15s; }
+.photo-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-cell:not(.selected) img { opacity: 0.45; }
+.photo-cell.selected { border-color: #2680c2; }
+.photo-check { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; background: #2680c2; color: #fff; font-size: 0.75rem; display: flex; align-items: center; justify-content: center; }
+.photo-cover-badge { position: absolute; bottom: 3px; left: 3px; background: rgba(38,128,194,0.85); color: #fff; font-size: 0.65rem; padding: 1px 5px; border-radius: 999px; }
+/* 確認視窗 */
+.confirm-panel { width: 100%; padding: 12px 14px; background: #f7f9fb; border: 1px solid #e4e7eb; border-radius: 10px; }
+.confirm-title { font-weight: 600; color: #1f2933; margin-bottom: 8px; }
+.confirm-summary { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.confirm-tag { font-size: 0.8rem; padding: 2px 10px; border-radius: 999px; background: #e3f0fb; color: #0a558c; font-weight: 500; }
+.confirm-tag.empty { background: #f0f4f8; color: #829ab1; }
+.confirm-img-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; align-items: center; }
+.confirm-thumb { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; border: 1px solid #e4e7eb; }
+.confirm-more { font-size: 0.82rem; color: #627d98; }
+.confirm-actions { display: flex; gap: 8px; }
+.confirm-actions button { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
+.confirm-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+/* 發布模式選擇器 */
+.publish-mode-section { border-top: 1px solid #e4e7eb; margin-top: 10px; padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.publish-mode-title { font-size: 0.8rem; color: #627d98; margin-bottom: 2px; }
+.mode-option { display: flex; align-items: baseline; gap: 7px; cursor: pointer; }
+.mode-option input[type=radio] { flex-shrink: 0; margin-top: 1px; accent-color: #2680c2; }
+.mode-label { font-size: 0.9rem; font-weight: 600; color: #1f2933; }
+.mode-desc { font-size: 0.8rem; color: #829ab1; }
+.mode-warning { margin: 4px 0 0; padding: 6px 10px; background: #fff8e6; border-radius: 6px; color: #8a6d3b; font-size: 0.8rem; line-height: 1.5; }
 .notice { color: #b7791f; }
 .tg-section { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 6px; padding-top: 10px; border-top: 1px solid #f0f2f5; }
 .tg-label { font-size: 0.85rem; color: #627d98; }

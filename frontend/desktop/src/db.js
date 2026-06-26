@@ -111,7 +111,14 @@ export async function listCards() {
       const src = img?.thumb || img?.blob
       if (src) coverUrl = URL.createObjectURL(src)
     }
-    result.push({ id: card.id, name: card.name, short_intro: card.short_intro || '', cover_image: coverUrl })
+    result.push({
+      id: card.id,
+      name: card.name,
+      short_intro: card.short_intro || '',
+      cover_image: coverUrl,
+      info_link: card.info_link || '',
+      info_link_label: card.info_link_label || '',
+    })
   }
   return result
 }
@@ -120,7 +127,7 @@ export async function createCard(name) {
   const db = await openDB()
   const t = db.transaction('cards', 'readwrite')
   const id = await p(t.objectStore('cards').add({
-    name, full_intro: '', short_intro: '', info_link: '',
+    name, full_intro: '', short_intro: '', info_link: '', info_link_label: '',
     cover_image_id: null, sort_order: Date.now(), created_at: now(), updated_at: now(),
   }))
   return { id, name }
@@ -140,6 +147,7 @@ export async function getCard(id) {
     full_intro: card.full_intro || '',
     short_intro: card.short_intro || '',
     info_link: card.info_link || '',
+    info_link_label: card.info_link_label || '',
     cover_image: coverImg?.blob ? URL.createObjectURL(coverImg.blob) : null,
     images: imgs.map(img => ({
       id: img.id,
@@ -162,6 +170,7 @@ export async function updateCard(id, data) {
   if (data.full_intro !== undefined) card.full_intro = data.full_intro
   if (data.short_intro !== undefined) card.short_intro = data.short_intro
   if (data.info_link !== undefined) card.info_link = data.info_link
+  if (data.info_link_label !== undefined) card.info_link_label = data.info_link_label
   card.updated_at = now()
   await p(store.put(card))
   return card

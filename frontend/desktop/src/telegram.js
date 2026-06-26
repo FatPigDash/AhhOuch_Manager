@@ -8,6 +8,18 @@
 const CAPTION_MAX = 1024
 const MEDIA_GROUP_MAX = 10
 
+// 判斷 Telegram API 錯誤是否為「訊息已被刪除或不存在」。
+// 用於覆蓋模式：若原訊息已刪，自動回退為發布新訊息。
+export function isMessageNotFoundError(e) {
+  const msg = (e?.message || '').toLowerCase()
+  return (
+    msg.includes('message to edit not found') ||
+    msg.includes('message_id_invalid') ||
+    msg.includes('message not found')
+  )
+}
+
+
 async function tgCall(token, method, body, isForm) {
   if (!token) throw new Error('尚未設定機器人金鑰')
   const url = `https://api.telegram.org/bot${token}/${method}`
@@ -53,12 +65,14 @@ export async function sendCard(token, chatId, files, text) {
   const captionInline = !!text && text.length <= CAPTION_MAX
   const caption = captionInline ? text : ''
 
+  let messageId
   if (files.length === 1) {
     const fd = new FormData()
     fd.append('chat_id', chatId)
     if (caption) fd.append('caption', caption)
     fd.append('photo', files[0])
-    await tgCall(token, 'sendPhoto', fd, true)
+    const result = await tgCall(token, 'sendPhoto', fd, true)
+    messageId = result?.message_id
   } else {
     const fd = new FormData()
     fd.append('chat_id', chatId)
@@ -70,9 +84,62 @@ export async function sendCard(token, chatId, files, text) {
       return item
     })
     fd.append('media', JSON.stringify(media))
-    await tgCall(token, 'sendMediaGroup', fd, true)
+    const result = await tgCall(token, 'sendMediaGroup', fd, true)
+    messageId = Array.isArray(result) ? result[0]?.message_id : result?.message_id
   }
 
   // 文字過長未能當說明文字時，圖片送完補一則純文字。
   if (text && !captionInline) await sendText(token, chatId, text)
+  return { messageId }
 }
+
+// 覆蓋模式：以新內容取代現有訊息。
+// files 為空   → editMessageText（純文字）
+// files 1 張   → editMessageMedia（換圖 + 說明文字）
+// files 多張   → editMessageCaption（只更新說明，圖片群無法整批換）
+// 若 API 回報類型不符，自動 fallback 到另一種方式。
+export async function editCard(token, chatId, messageId, files, text) {
+  if (!chatId) throw new Error('尚未設定群組編號')
+  if (!messageId) throw new Error('找不到原訊息編號，無法覆蓋')
+  text = text || ''
+  files = files || []
+
+  if (!files.length) {
+    // 純文字訊息：直接 editMessageText
+    try {
+      return await tgCall(token, 'editMessageText', { chat_id: chatId, message_id: messageId, text })
+    } catch (_) {
+      // 原訊息可能是媒體訊息，改用 editMessageCaption
+      const caption = text.slice(0, CAPTION_MAX)
+      return await tgCall(token, 'editMessageCaption', { chat_id: chatId, message_id: messageId, caption })
+    }
+  }
+
+  if (files.length === 1) {
+    // 單張圖片：用 editMessageMedia 同時換圖與說明文字
+    const captionInline = text.length <= CAPTION_MAX
+    const fd = new FormData()
+    fd.append('chat_id', chatId)
+    fd.append('message_id', messageId)
+    const mediaObj = { type: 'photo', media: 'attach://photo' }
+    if (captionInline && text) mediaObj.caption = text
+    fd.append('media', JSON.stringify(mediaObj))
+    fd.append('photo', files[0])
+    try {
+      await tgCall(token, 'editMessageMedia', fd, true)
+    } catch (_) {
+      // 原訊息為純文字，改用 editMessageText
+      await tgCall(token, 'editMessageText', { chat_id: chatId, message_id: messageId, text })
+    }
+    return
+  }
+
+  // 多張圖片：Telegram 不支援整組換圖，僅更新第一則的說明文字
+  const caption = text.slice(0, CAPTION_MAX)
+  try {
+    return await tgCall(token, 'editMessageCaption', { chat_id: chatId, message_id: messageId, caption })
+  } catch (_) {
+    return await tgCall(token, 'editMessageText', { chat_id: chatId, message_id: messageId, text })
+  }
+}
+
