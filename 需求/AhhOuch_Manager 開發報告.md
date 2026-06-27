@@ -1101,26 +1101,30 @@ git push origin main
 
 **驗證**：功能正常，`npm run build` 成功。
 
-#### 11.52 備份到雲端：修正 iOS 分享失敗、按鈕改名、自動降級下載
+#### 11.52 備份 UI 簡化：移除分享按鈕、改為單一下載鈕並附雲端上傳說明
 
-**問題**：iOS 手機點選「📤 分享備份檔」後顯示「分享失敗：permission denied」（即 `NotAllowedError`）。
+**背景**：
 
-**根本原因**：Web Share API 要求 `navigator.share()` 必須在使用者手勢（點擊）的同步執行流程中直接呼叫。`doShare()` 函式先以 `await exportBackup()` 執行非同步打包作業，打包完成後才呼叫 `navigator.share()`——兩者之間存在 async gap，iOS Safari 的嚴格手勢時序檢查因此拒絕請求並回傳 `permission denied`。
+原有兩個按鈕——「📤 備份到雲端」（呼叫 Web Share API）與「⬇ 下載備份檔」（直接下載）。經排查，iOS Safari 的嚴格手勢時序限制（`NotAllowedError`）導致「備份到雲端」在 `await exportBackup()` 完成後呼叫 `navigator.share()` 時被拒絕，實際會自動退回下載行為——與「下載備份檔」功能完全重複。故決定：**移除「備份到雲端」按鈕及 `doShare()` 函式，僅保留單一「⬇ 下載備份檔」按鈕，並補充雲端上傳的操作說明文字。**
 
 **修改 `views/BackupView.vue`**：
 
-- **`doShare()` 改寫為雙軌機制**：
-  1. 先嘗試原有的系統分享選單（`canShareFiles` + `share()`）；若成功則顯示提示「請選擇「儲存到檔案」(iOS) 或「存到 Google Drive」(Android)」後返回。
-  2. 若瀏覽器拒絕（`NotAllowedError` 或裝置不支援），**自動降級為下載**：以 `Blob` + `<a download>` 觸發存檔，iOS 存到「檔案」App（可選 iCloud Drive），Android 存到下載資料夾。
-  3. 使用者自行取消分享選單（`AbortError` → `'cancelled'`）時，不顯示任何錯誤訊息。
+- 移除 `import { canShareFiles, share } from '../share'`（不再使用）。
+- 刪除 `doShare()` 函式（含所有 Web Share API 邏輯）。
+- 「📤 備份到雲端」按鈕改為主要樣式的「⬇ 下載備份檔」（唯一匯出入口）。
+- 提示文字改為逐步操作說明：
+  - 📱 **iOS**：下載後點選檔案 → 「儲存到檔案」→ 選 **iCloud Drive**
+  - 🤖 **Android**：到「下載」資料夾 → 長按檔案 → 上傳到 **Google Drive**
+- 下載成功訊息也同步改為白話操作指引（iOS / Android 分別說明）。
 
-- **按鈕名稱**：「📤 分享備份檔」→「📤 備份到雲端」，語意更貼近實際用途（備份目的，分享為手段）。
+**修改 `App.vue`**（每月備份提醒橫幅）：
 
-- **提示文字**：「分享可直接存到雲端 App；下載存到本機後再自行上傳」→「點「📤 備份到雲端」自動儲存備份檔。iOS 會存到「檔案」App（可選 iCloud Drive）；Android 會存到下載資料夾。」
+- 原文：「建議匯出備份到雲端以防資料遺失」
+- 改為：「請下載備份檔並上傳到雲端（iOS → iCloud Drive；Android → Google Drive）」——與備份頁說明一致，讓使用者在提醒橫幅就能明白具體步驟。
 
 **確認（背景知識）**：
 - iOS iCloud 備份（手機設定層級）**不可靠地保護**瀏覽器 IndexedDB 資料——Apple 明確將瀏覽器本地儲存列為「可清除快取」，換機或清除網站資料皆會遺失，在 App 內匯出備份檔存至 iCloud Drive 是唯一可靠的跨裝置還原途徑。
 - Android 可透過 Google Drive API 做自動直連上傳（需 OAuth 授權），但因使用者評估後認為手動備份已足夠，暫不實作。
 
-**驗證**：修改後 `doShare()` 在 iOS 遇到 `permission denied` 時自動降級下載，不再顯示錯誤訊息；成功訊息改為白話操作指引。`npm run build` 成功。
+**驗證**：`npm run build` 成功。
 

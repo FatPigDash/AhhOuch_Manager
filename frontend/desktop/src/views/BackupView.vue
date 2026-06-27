@@ -2,7 +2,6 @@
 import { ref, onMounted } from 'vue'
 import CadreNav from '../components/CadreNav.vue'
 import { exportBackup, importBackup, fileIsEncrypted } from '../backup'
-import { canShareFiles, share } from '../share'
 import { getLastBackup, setLastBackupNow } from '../backupMeta'
 
 const busy = ref(false)
@@ -35,44 +34,12 @@ async function doDownload() {
     a.click()
     URL.revokeObjectURL(a.href)
     setLastBackupNow(); refreshLast()
-    okMsg.value = `已產生備份檔「${filename}」${exportPassword.value ? '（已加密）' : ''}，請存到雲端硬碟。`
+    okMsg.value = `備份檔「${filename}」已下載${exportPassword.value ? '（已加密）' : ''}。iOS：請到「檔案」App → 選「iCloud Drive」儲存；Android：請到下載資料夾 → 選「上傳到 Google Drive」。`
   } catch (e) { error.value = '匯出失敗：' + e.message }
   finally { busy.value = false }
 }
 
-async function doShare() {
-  reset(); busy.value = true
-  try {
-    const { bytes, filename } = await exportBackup(exportPassword.value)
-    const file = new File([bytes], filename, { type: 'application/octet-stream' })
 
-    // 嘗試系統分享選單（iOS / Android 原生）
-    if (canShareFiles([file])) {
-      try {
-        const result = await share({ title: filename, files: [file] })
-        if (result === 'shared') {
-          setLastBackupNow(); refreshLast()
-          okMsg.value = '已開啟分享選單，請選擇「儲存到檔案」(iOS) 或「存到 Google Drive」(Android) 完成備份。'
-          return
-        }
-        if (result === 'cancelled') return  // 使用者自行取消，不顯示錯誤
-      } catch {
-        // 瀏覽器拒絕（如 iOS 安全限制），改用下載
-      }
-    }
-
-    // 退回下載：iOS 存到「檔案」App → 可選 iCloud Drive；Android 存到下載資料夾
-    const blob = new Blob([bytes], { type: 'application/octet-stream' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(a.href)
-    setLastBackupNow(); refreshLast()
-    okMsg.value = `備份檔已儲存！iOS 請到「檔案」App → iCloud Drive 確認；Android 請到下載資料夾查看。`
-  } catch (e) { error.value = '備份失敗：' + e.message }
-  finally { busy.value = false }
-}
 
 async function onPickFile(e) {
   reset()
@@ -123,10 +90,13 @@ onMounted(refreshLast)
       </label>
       <p class="warn" v-if="exportPassword">⚠ 加密後若忘記此密碼，備份將永遠無法還原，請務必記住。</p>
       <div class="actions">
-        <button class="primary" :disabled="busy" @click="doShare">📤 備份到雲端</button>
-        <button class="ghost" :disabled="busy" @click="doDownload">⬇ 下載備份檔</button>
+        <button class="primary" :disabled="busy" @click="doDownload">⬇ 下載備份檔</button>
       </div>
-      <p class="hint">點「📤 備份到雲端」自動儲存備份檔。iOS 會存到「檔案」App（可選 iCloud Drive）；Android 會存到下載資料夾。</p>
+      <p class="hint">
+        下載後請手動上傳到您的雲端硬碟：<br>
+        📱 <strong>iOS</strong>：下載後點選檔案 → 「儲存到檔案」→ 選 <strong>iCloud Drive</strong><br>
+        🤖 <strong>Android</strong>：到「下載」資料夾 → 長按檔案 → 上傳到 <strong>Google Drive</strong>
+      </p>
     </div>
 
     <!-- 匯入 -->

@@ -29,7 +29,7 @@ onMounted(async () => {
     <router-link to="/" class="brand">{{ title }}</router-link>
   </header>
   <div v-if="showBackupReminder" class="backup-reminder">
-    <span>📦 距離上次備份已超過一個月，建議匯出備份到雲端以防資料遺失。</span>
+    <span>📦 距離上次備份已超過一個月，請下載備份檔並上傳到雲端（iOS → iCloud Drive；Android → Google Drive）。</span>
     <span class="reminder-actions">
       <router-link :to="{ name: 'backup' }" class="reminder-go" @click="showBackupReminder = false">前往備份</router-link>
       <button class="reminder-x" @click="showBackupReminder = false" title="關閉">✕</button>

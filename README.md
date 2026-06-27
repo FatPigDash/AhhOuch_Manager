@@ -37,10 +37,10 @@
 git add .
 git commit -m "說明這次改了什麼"
 
-用這個指令其他人就會套用更新版本
-cd "d:\Fat Pig Project\AhhOuch_Manager_Edit"
+github上傳就能讓其他人就會套用更新版本
 
-執行指令
+
+執行備份指令
 git push origin main
 ```
 
@@ -50,6 +50,8 @@ GitHub Actions 會自動 build 並部署到 GitHub Pages，約 **2-3 分鐘**後
 部署狀態可在此查看：https://github.com/FatPigDash/AhhOuch_Manager/actions
 
 ---
+
+cd "d:\Fat Pig Project\AhhOuch_Manager_Edit"
 
 ## 本機開發
 
