@@ -8,7 +8,7 @@
 > - [`AhhOuch 開發計畫.md`](./AhhOuch%20開發計畫.md) — 開發前的總體規劃與需求對照表（修訂歷程已移至本報告 §12）
 > - 版本修訂紀錄（依版次）— 已整合於本報告 §5 附錄（原獨立檔 `CHANGELOG.md` 已移除）
 >
-> 報告產生日期：2026-06-20（最後更新：2026-06-27，§12 增列 11.51：**班表新增 Telegram 訊息連結與發布覆蓋模式**；前次為 11.46–11.50）
+> 報告產生日期：2026-06-20（最後更新：2026-06-27，§12 增列 11.54–11.56：**封面自動設定、教學頁回到主頁鈕、切換按鈕 tab 化**；前次為 11.53）
 > ｜ 對應版本：app.toml 1.7.0／git V2.0.0→M2 完成 ｜ 狀態：**架構轉型進行中：M1（資料層移植）✅、M2（PWA 化 + GitHub Pages）✅、M3–M6 待開發**
 
 ---
@@ -293,6 +293,12 @@ git push origin main
 > - 11.48 → M4（批次發布美容師卡片，含選卡片、選圖片模式、選目標、優先覆蓋模式、連結回填）
 > - 11.49 → M4＋M6（發布時若原 Telegram 訊息被手動刪除，自動改發全新訊息）
 > - 11.50 → M5（班表：出勤人員排序改依資訊卡片順序、新增人員預設自動換算、發布時名字加 info_link 超連結）
+> - 11.51 → M5（班表新增 Telegram 訊息連結欄位與覆蓋發布模式）
+> - 11.52 → M6（備份 UI 簡化：移除分享按鈕、改單一下載鈕並附雲端上傳說明）
+> - 11.53 → 軟體教學頁（GuideView 全面重寫：補全準確說明、改為 CSS 模擬圖、刪除假 AI 圖片、修正備份副檔名）
+> - 11.54 → M4（美容師卡片：上傳第一張圖片時自動設為封面，後續以 ★ 按鈕手動切換）
+> - 11.55 → 軟體教學頁（GuideView 新增「回到主頁」按鈕，以 tab 橫列方式排於頁籤左側）
+> - 11.56 → M4（資訊卡片列表：卡片／列表切換按鈕外觀改為 tab 底線風格，與教學頁一致）
 >
 > 讀法：先看 §5 里程碑的「↳」指引找到對應條目，即可掌握該功能的**最新實際行為**。
 
@@ -1127,4 +1133,85 @@ git push origin main
 - Android 可透過 Google Drive API 做自動直連上傳（需 OAuth 授權），但因使用者評估後認為手動備份已足夠，暫不實作。
 
 **驗證**：`npm run build` 成功。
+
+### 2026-06-27 — 軟體教學頁全面重寫
+
+#### 11.53 GuideView 軟體教學重寫：補正說明內容、改用 CSS 模擬圖、刪除假 AI 圖片、修正備份副檔名
+
+**背景**：原教學頁由 Gemini 生成，存在四類問題：
+1. **捏造欄位**——說卡片可填「身高、體重、三圍」，實際不存在。
+2. **班表模型錯誤**——示意圖顯示「上班／休假」切換，實際介面為「出勤人員 pill ＋ 出勤時段（手動輸入／自動換算班次）」。
+3. **備份副檔名錯誤**——教學與使用聲明均寫成 `.ahhouch`，實際為 `.ahbk`。
+4. **假 AI 圖片**——`public/img/` 下有 4 張英文 AI 生圖（"Sarah J. Anderson, Product Designer"、英文月曆），與本軟體無關且從未被程式碼引用。
+
+**修改內容**（`frontend/desktop/src/views/GuideView.vue`，完整重寫教學分頁）：
+
+*內容*：教學分頁改依**實際操作順序**重寫為 7 段——
+0. 四大頁籤導覽（資訊卡片／班表／發布設定／備份）
+1. 資訊卡片：建立與檢視（輸入名字/編號建立、卡片/列表切換、批次發布）
+2. 編輯卡片內容（上傳/拍照/貼上/Ctrl+V、設封面、完整＋簡短兩段介紹、記得儲存）
+3. 班表（日期自動顯示星期、標題/結語模板、出勤人員 pill、手動輸入 1830→18:30／自動換算班次、草稿/已發布）
+4. 發布設定（名稱/機器人金鑰/群組編號、內建 [?] BotFather 申請教學、啟用/停用）
+5. 一鍵發布（分享至 LINE／複製文字／下載圖片／發送 Telegram、選版本與照片、覆蓋不洗版）
+6. 備份與還原（本機優先警告、`.ahbk` 加密匯出、覆蓋還原、每月提醒）
+
+*模擬圖*：移除所有假圖（`public/img/` 整個目錄已刪除），改為**純 CSS 繪製的 UI 示意圖**，使用與真實介面相同的配色（`#102a43`、`#2680c2`）、按鈕文字與元件結構；行動版 (`max-width: 768px`) 自動改為垂直堆疊。
+
+*使用聲明分頁*：補正備份檔副檔名由 `.ahhouch` 改為正確的 `.ahbk`。
+
+**檔案異動**：
+- `frontend/desktop/src/views/GuideView.vue` — 整個教學分頁重寫
+- `frontend/desktop/public/img/tutorial_backup.png`、`tutorial_card.png`、`tutorial_publish.png`、`tutorial_schedule.png` — 刪除（4 張 AI 假圖）
+- `frontend/desktop/public/img/`（目錄）— 已清空後刪除
+
+**驗證**（Vite dev server `#/guide`，`preview_eval` 實機）：7 個 `h3` 標題正確、6 個 `.mockup` 區塊渲染、頁面含 `.ahbk`、不含 `.ahhouch`、不含「三圍」；行動版（`flex-direction: column`、無橫向溢出）正常。
+
+#### 11.54 美容師卡片：第一張圖片自動設為封面
+
+**背景**：原 `addImage()` 函式上傳圖片後一律回傳 `is_cover: false`，新建卡片上傳第一張圖片後封面區塊仍顯示「無封面」，需要使用者手動點 ★ 才能設定封面，操作步驟多餘。
+
+**修改 `frontend/desktop/src/db.js`（`addImage` 函式）**：
+
+- 圖片寫入 `images` store 後，額外開一筆 `cards` readwrite transaction，讀取該卡片的 `cover_image_id`。
+- 若 `cover_image_id` 為 null（尚無封面），自動將剛寫入的圖片 ID 設為 `cover_image_id` 並回存 card，同時把回傳的 `is_cover` 設為 `true`。
+- 若已有封面，跳過，維持原行為（不覆蓋）。
+
+**行為說明**：
+
+| 情境 | 結果 |
+|------|------|
+| 上傳**第一張**圖片（尚無封面） | 自動設為封面，顯示「封面」標籤 |
+| 上傳**第二張以後**圖片 | 不影響現有封面 |
+| 點擊非封面圖片的 **★ 按鈕** | 手動切換封面（現有功能不變） |
+| 刪除封面圖 | 封面清空，需手動以 ★ 重新指定 |
+
+**檔案異動**：`frontend/desktop/src/db.js` — `addImage` 函式新增封面自動設定邏輯。
+
+#### 11.55 教學及聲明頁（GuideView）新增「回到主頁」按鈕
+
+**背景**：`GuideView` 是從主頁右上角按鈕開啟的獨立頁面（`#/guide`），但頁面內無法導回主頁，使用者只能依賴瀏覽器上一頁按鈕。
+
+**修改 `frontend/desktop/src/views/GuideView.vue`**：
+
+- `<script setup>` 引入 `useRouter`，新增 `goHome()` 函式（`router.push({ name: 'cadre-list' })`）。
+- 原 `.tabs` div 外包一層 `.guide-topbar`，左側加入「← 回到主頁」按鈕，右側保留原有的「📖 軟體教學」／「⚠️ 使用聲明」兩頁籤。
+- 新增 `.guide-topbar`（flex 橫排、與 tab 列同底色）、`.guide-topbar .back`（圓角邊框按鈕、hover 高亮）、`.guide-topbar .tabs`（覆寫 `border-bottom: none`，底線改由 `.guide-topbar` 統一提供）等 CSS 規則。
+
+**檔案異動**：`frontend/desktop/src/views/GuideView.vue`。
+
+#### 11.56 資訊卡片列表：切換按鈕（卡片／列表）改為 tab 底線風格
+
+**背景**：原「卡片／列表」切換按鈕為膠囊型（圓角容器 + 白底陰影 active），與教學頁 tab 底線設計不一致，視覺語言混亂。
+
+**修改 `frontend/desktop/src/views/CadreCardListView.vue`**：
+
+- `.view-toggle`：移除 `gap`、`border-radius`、`padding`；改加 `border-bottom: 2px solid #e1e8ed` 與 `align-self: stretch`（讓容器撐滿列高，底線才能貼齊）。
+- `.view-toggle button`：移除 `border-radius`；加 `border-bottom: 3px solid transparent`、`margin-bottom: -2px`（蓋住容器底線）、`font-weight: 600`；padding 加大為 `10px 16px`。
+- `.view-toggle button.active`：改為 `background: #fff; color: #102a43; border-bottom-color: #102a43`，移除原有 `box-shadow`。
+- `.toolbar-right`：`align-items` 由 `center` 改為 `stretch`，讓 `.view-toggle` 能撐高。
+- `.batch-toggle-btn`：新增 `align-self: center`，避免被 `stretch` 拉高。
+
+**視覺效果**：切換按鈕現在與教學頁頁籤（`#102a43` 底線、白底 active）外觀一致，統一全站 tab 設計語言。
+
+**檔案異動**：`frontend/desktop/src/views/CadreCardListView.vue` — `.view-toggle`、`.toolbar-right`、`.batch-toggle-btn` CSS 規則。
 

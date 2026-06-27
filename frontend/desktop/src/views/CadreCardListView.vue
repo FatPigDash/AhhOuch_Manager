@@ -623,7 +623,7 @@ h1 { margin-top: 0; }
 
 .toolbar-right {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
   flex-shrink: 0;
 }
@@ -631,31 +631,33 @@ h1 { margin-top: 0; }
 /* 顯示模式切換 */
 .view-toggle {
   display: flex;
-  gap: 4px;
   background: #f0f4f8;
-  border-radius: 10px;
-  padding: 4px;
+  border-bottom: 2px solid #e1e8ed;
+  align-self: stretch;
 }
 .view-toggle button {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 12px;
+  padding: 10px 16px;
   border: none;
-  border-radius: 7px;
-  background: transparent;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  background: none;
   color: #627d98;
-  font-size: 0.85rem;
+  font-size: 0.88rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.18s, color 0.18s;
+  transition: background 0.2s, color 0.2s;
 }
-.view-toggle button:hover { background: #dfe6ed; color: #334e68; }
-.view-toggle button.active { background: #fff; color: #2680c2; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+.view-toggle button:hover { background: #e1e8ed; color: #334e68; }
+.view-toggle button.active { background: #fff; color: #102a43; border-bottom-color: #102a43; }
 
 /* 批次模式切換按鈕 */
 .batch-toggle-btn {
   display: flex;
   align-items: center;
+  align-self: center;
   gap: 5px;
   padding: 6px 14px;
   border: 1px solid #cbd2d9;

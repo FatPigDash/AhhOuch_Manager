@@ -193,10 +193,25 @@ export async function addImage(cardId, blob) {
   // 匯入即最佳化：等比縮放並重新編碼，另存縮圖（容量基準 §6.3 / D5）。
   const { full, thumb } = await processImage(blob)
   const db = await openDB()
+  const numCardId = Number(cardId)
   const id = await p(db.transaction('images', 'readwrite').objectStore('images').add({
-    card_id: Number(cardId), blob: full, thumb, sort_order: Date.now(),
+    card_id: numCardId, blob: full, thumb, sort_order: Date.now(),
   }))
-  return { id, url: URL.createObjectURL(full), thumb_url: URL.createObjectURL(thumb), is_cover: false }
+
+  // 若卡片尚無封面，自動將第一張上傳的圖片設為封面。
+  const t = db.transaction('cards', 'readwrite')
+  const cardStore = t.objectStore('cards')
+  const card = await p(cardStore.get(numCardId))
+  let isCover = false
+  if (card && !card.cover_image_id) {
+    card.cover_image_id = id
+    card.updated_at = now()
+    await p(cardStore.put(card))
+    isCover = true
+  }
+  await txDone(t)
+
+  return { id, url: URL.createObjectURL(full), thumb_url: URL.createObjectURL(thumb), is_cover: isCover }
 }
 
 export async function setCover(imageId) {

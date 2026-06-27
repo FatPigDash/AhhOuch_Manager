@@ -26,7 +26,10 @@ onMounted(async () => {
 
 <template>
   <header class="app-header">
-    <router-link to="/" class="brand">{{ title }}</router-link>
+    <div class="header-left">
+      <router-link to="/" class="brand">{{ title }}</router-link>
+      <router-link to="/guide" class="guide-btn">教學及聲明</router-link>
+    </div>
   </header>
   <div v-if="showBackupReminder" class="backup-reminder">
     <span>📦 距離上次備份已超過一個月，請下載備份檔並上傳到雲端（iOS → iCloud Drive；Android → Google Drive）。</span>
@@ -43,7 +46,7 @@ onMounted(async () => {
 <style scoped>
 .app-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px 12px;
@@ -51,11 +54,29 @@ onMounted(async () => {
   background: #102a43;
   color: #fff;
 }
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
 .brand {
   font-size: 1.3rem;
   font-weight: 700;
   color: #fff;
   text-decoration: none;
+}
+.guide-btn {
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #fff;
+  background: rgba(255,255,255,0.2);
+  padding: 4px 10px;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+.guide-btn:hover {
+  background: rgba(255,255,255,0.3);
 }
 .backup-reminder {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
