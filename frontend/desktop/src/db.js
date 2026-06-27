@@ -247,7 +247,7 @@ export async function listSchedules() {
 export async function createSchedule(title = '') {
   const db = await openDB()
   const id = await p(db.transaction('schedules', 'readwrite').objectStore('schedules').add({
-    title, footer: '', date: '', published_at: null, created_at: now(), updated_at: now(),
+    title, footer: '', date: '', published_at: null, tg_link: '', tg_link_label: '', created_at: now(), updated_at: now(),
   }))
   return { id, title }
 }
@@ -275,7 +275,7 @@ export async function getSchedule(id) {
   }
   enriched.sort((a, b) => a._sort_order - b._sort_order)
   enriched.forEach(e => delete e._sort_order)
-  return { id: s.id, title: s.title || '', footer: s.footer || '', date: s.date || '', published_at: s.published_at || null, entries: enriched }
+  return { id: s.id, title: s.title || '', footer: s.footer || '', date: s.date || '', published_at: s.published_at || null, tg_link: s.tg_link || '', tg_link_label: s.tg_link_label || '', entries: enriched }
 }
 
 // 標記班表已發布（記錄發布時間）。不更動 updated_at——發布本身未改內容，
@@ -302,6 +302,8 @@ export async function updateSchedule(id, data) {
   if (data.title !== undefined) s.title = data.title
   if (data.footer !== undefined) s.footer = data.footer
   if (data.date !== undefined) s.date = data.date
+  if (data.tg_link !== undefined) s.tg_link = data.tg_link
+  if (data.tg_link_label !== undefined) s.tg_link_label = data.tg_link_label
   s.updated_at = now()
   await p(store.put(s))
   return s

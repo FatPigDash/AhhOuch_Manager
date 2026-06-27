@@ -56,6 +56,25 @@ export async function sendText(token, chatId, text, opts = {}) {
   return tgCall(token, 'sendMessage', body)
 }
 
+// 發送班表純文字並回傳 messageId（供記錄 TG 訊息連結）。
+export async function sendScheduleText(token, chatId, text, opts = {}) {
+  if (!chatId) throw new Error('尚未設定群組編號')
+  const body = { chat_id: chatId, text }
+  if (opts.parse_mode) body.parse_mode = opts.parse_mode
+  const result = await tgCall(token, 'sendMessage', body)
+  return { messageId: result?.message_id }
+}
+
+// 覆蓋模式：以新內容取代現有班表訊息（純文字）。
+export async function editScheduleText(token, chatId, messageId, text, opts = {}) {
+  if (!chatId) throw new Error('尚未設定群組編號')
+  if (!messageId) throw new Error('找不到原訊息編號，無法覆蓋')
+  const body = { chat_id: chatId, message_id: messageId, text }
+  if (opts.parse_mode) body.parse_mode = opts.parse_mode
+  return tgCall(token, 'editMessageText', body)
+}
+
+
 // 發送卡片：files 為 File/Blob 陣列（可空），text 為文字（可空）。
 export async function sendCard(token, chatId, files, text) {
   if (!chatId) throw new Error('尚未設定群組編號')

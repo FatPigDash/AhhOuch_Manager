@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import html2canvas from 'html2canvas'
 import { api } from '../api'
 import { canShare, share } from '../share'
-import { sendText as tgSendText } from '../telegram'
+import { sendScheduleText, editScheduleText, isMessageNotFoundError } from '../telegram'
 import TextTemplateBar from '../components/TextTemplateBar.vue'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
@@ -28,6 +28,8 @@ const shareSupported = canShare()
 const targets = ref([])      // Telegram 發布目標（啟用中）
 const tgNotice = ref('')
 const tgSending = ref(false)
+const confirmTarget = ref(null)   // 等待確認的目標
+const publishMode = ref('edit')   // 'edit'（覆蓋，預設）| 'new'（新發布）
 
 async function load() {
   try {
@@ -182,6 +184,7 @@ async function openPublish() {
   copied.value = false
   shareNotice.value = ''
   tgNotice.value = ''
+  confirmTarget.value = null
   try {
     const payload = await api.schedulePublishText(props.id)
     publishText.value = payload.text
@@ -190,14 +193,82 @@ async function openPublish() {
     showPublish.value = true
   } catch (e) { error.value = e.message }
 }
-// 發送班表文字到 Telegram（純前端直連），成功後標記已發布。
+// 依 chat_id 與 message_id 組出 Telegram 訊息連結（同美容師卡片邏輯）。
+function buildTgLink(chatId, messageId) {
+  if (!chatId || !messageId) return ''
+  const id = String(chatId).replace(/^-100/, '')
+  return `https://t.me/c/${id}/${messageId}`
+}
+// 從 t.me 連結解析出 message_id（整數）。
+function parseMsgId(link) {
+  if (!link) return null
+  const m = link.match(/\/(\d+)$/)
+  return m ? Number(m[1]) : null
+}
+// 使用者點擊 Telegram 目標時，先進入確認步驟。
+function requestConfirm(target) {
+  tgNotice.value = ''
+  confirmTarget.value = target
+  publishMode.value = schedule.value?.tg_link ? 'edit' : 'new'
+}
+// 手動清空連結時一並清除標籤。
+function onLinkInput() {
+  if (!schedule.value.tg_link) schedule.value.tg_link_label = ''
+}
+async function saveTgLink() {
+  api.updateSchedule(props.id, {
+    tg_link: schedule.value.tg_link,
+    tg_link_label: schedule.value.tg_link_label,
+  }).catch((e) => (error.value = e.message))
+}
+// 確認後執行實際發送。
 async function sendToTelegram(target) {
+  confirmTarget.value = null
   tgNotice.value = ''
   tgSending.value = true
   try {
-    await tgSendText(target.token, target.target_id, publishHtml.value || publishText.value, { parse_mode: 'HTML' })
-    tgNotice.value = `✓ 已發送到「${target.name}」`
-    await markPublished()
+    const text = publishHtml.value || publishText.value
+    const opts = publishHtml.value ? { parse_mode: 'HTML' } : {}
+    if (publishMode.value === 'edit') {
+      // 覆蓋模式：修改現有訊息
+      const msgId = parseMsgId(schedule.value.tg_link)
+      try {
+        await editScheduleText(target.token, target.target_id, msgId, text, opts)
+        tgNotice.value = `✓ 已更新「${target.name}」的訊息`
+        if (schedule.value.tg_link_label !== target.name) {
+          schedule.value.tg_link_label = target.name
+          try { await api.updateSchedule(props.id, { tg_link_label: target.name }) } catch (_) {}
+        }
+        await markPublished()
+      } catch (editErr) {
+        if (isMessageNotFoundError(editErr)) {
+          // 原訊息已被刪除，自動改為發布新訊息
+          tgNotice.value = '原訊息不存在，自動改為發布新訊息…'
+          const { messageId } = await sendScheduleText(target.token, target.target_id, text, opts)
+          tgNotice.value = `✓ 已發布新訊息到「${target.name}」（原訊息已刪除）`
+          const link = buildTgLink(target.target_id, messageId)
+          if (link) {
+            schedule.value.tg_link = link
+            schedule.value.tg_link_label = target.name
+            try { await api.updateSchedule(props.id, { tg_link: link, tg_link_label: target.name }) } catch (_) {}
+          }
+          await markPublished()
+        } else {
+          throw editErr
+        }
+      }
+    } else {
+      // 全新訊息模式
+      const { messageId } = await sendScheduleText(target.token, target.target_id, text, opts)
+      tgNotice.value = `✓ 已發送到「${target.name}」`
+      const link = buildTgLink(target.target_id, messageId)
+      if (link) {
+        schedule.value.tg_link = link
+        schedule.value.tg_link_label = target.name
+        try { await api.updateSchedule(props.id, { tg_link: link, tg_link_label: target.name }) } catch (_) {}
+      }
+      await markPublished()
+    }
   } catch (e) {
     tgNotice.value = `發送到「${target.name}」失敗：${e.message}`
   } finally { tgSending.value = false }
@@ -361,6 +432,37 @@ onMounted(() => { load(); loadCards() })
       </label>
     </div>
 
+    <!-- Telegram 訊息連結（發布後自動填入，亦可手動貼上或清除） -->
+    <div class="panel">
+      <div class="field">
+        <span>Telegram 訊息連結
+          <span class="field-hint">發布到 Telegram 後自動填入，可點擊開啟或手動編輯</span>
+        </span>
+        <!-- 發布設定名稱標籤 -->
+        <div v-if="schedule.tg_link_label" class="link-label-row">
+          <span class="link-label-badge">✈ {{ schedule.tg_link_label }}</span>
+          <span class="link-label-hint">此連結對應發布設定</span>
+        </div>
+        <div class="link-row">
+          <input
+            v-model="schedule.tg_link"
+            placeholder="發布到 Telegram 後自動填入"
+            class="link-input"
+            @input="onLinkInput"
+            @blur="saveTgLink"
+          />
+          <a
+            v-if="schedule.tg_link"
+            :href="schedule.tg_link"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="link-btn ghost"
+            title="在新分頁開啟"
+          >🔗 開啟</a>
+        </div>
+      </div>
+    </div>
+
     <!-- 發布視窗 (S11) -->
     <div v-if="showPublish" class="modal-backdrop" @click.self="showPublish = false">
       <div class="modal">
@@ -379,10 +481,41 @@ onMounted(() => { load(); loadCards() })
 
         <!-- 一鍵發送到 Telegram（依「發布設定」的目標） -->
         <div v-if="targets.length" class="tg-section">
-          <span class="tg-label">發送到 Telegram</span>
-          <button v-for="t in targets" :key="t.id" class="tg-btn" :disabled="tgSending" @click="sendToTelegram(t)">
-            ✈ {{ t.name }}
-          </button>
+          <template v-if="!confirmTarget">
+            <span class="tg-label">發送到 Telegram</span>
+            <button v-for="t in targets" :key="t.id" class="tg-btn" :disabled="tgSending" @click="requestConfirm(t)">
+              ✈ {{ t.name }}
+            </button>
+          </template>
+
+          <!-- 確認視窗：顯示目標及發布模式 -->
+          <div v-else class="confirm-panel">
+            <div class="confirm-title">確認發送到「{{ confirmTarget.name }}」？</div>
+
+            <!-- 有既有連結時，讓使用者選擇覆蓋還是新訊息 -->
+            <div v-if="schedule.tg_link" class="publish-mode-section">
+              <div class="publish-mode-title">此班表已有 Telegram 訊息連結</div>
+              <label class="mode-option">
+                <input type="radio" v-model="publishMode" value="edit" />
+                <span class="mode-label">覆蓋舊有訊息</span>
+                <span class="mode-desc">修改現有訊息的內容（預設）</span>
+              </label>
+              <label class="mode-option">
+                <input type="radio" v-model="publishMode" value="new" />
+                <span class="mode-label">發布全新訊息</span>
+                <span class="mode-desc">在群組新增一則訊息</span>
+              </label>
+              <p v-if="schedule.tg_link_label && schedule.tg_link_label !== confirmTarget.name" class="mode-warning">
+                ⚠ 現有連結來自「{{ schedule.tg_link_label }}」，與目前選擇的目標不同，請確認是否為同一群組的連結。
+              </p>
+            </div>
+            <div class="confirm-actions">
+              <button class="primary" :disabled="tgSending" @click="sendToTelegram(confirmTarget)">
+                {{ tgSending ? (publishMode === 'edit' ? '更新中…' : '發送中…') : (publishMode === 'edit' ? '✏ 確認覆蓋' : '✈ 確認發送') }}
+              </button>
+              <button class="ghost" :disabled="tgSending" @click="confirmTarget = null">取消</button>
+            </div>
+          </div>
         </div>
         <p v-if="tgNotice" class="hint center notice">{{ tgNotice }}</p>
 
@@ -464,4 +597,30 @@ button.primary { background: #2680c2; color: #fff; border: none; border-radius: 
 .auto-publish { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 6px; padding-top: 10px; border-top: 1px solid #f0f2f5; }
 .ap-label { font-size: 0.85rem; color: #627d98; }
 .chip-btn { border: 1px solid #2680c2; color: #0a558c; background: #e3f0fb; border-radius: 999px; padding: 5px 12px; font-size: 0.85rem; }
+
+/* Telegram 訊息連結欄位 */
+.field-hint { font-size: 0.78rem; color: #9fb3c8; font-weight: 400; margin-left: 6px; }
+.link-label-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.link-label-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; background: #e3f0fb; color: #0a558c; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+.link-label-hint { font-size: 0.78rem; color: #9fb3c8; }
+.link-row { display: flex; gap: 8px; align-items: center; }
+.link-input { flex: 1; padding: 8px 10px; border: 1px solid #cbd2d9; border-radius: 8px; font-size: 0.9rem; color: #1f2933; min-width: 0; }
+.link-btn { display: inline-flex; align-items: center; gap: 4px; padding: 7px 12px; border-radius: 8px; font-size: 0.85rem; text-decoration: none; white-space: nowrap; border: none; cursor: pointer; }
+
+/* 確認視窗 */
+.confirm-panel { width: 100%; padding: 12px 14px; background: #f7f9fb; border: 1px solid #e4e7eb; border-radius: 10px; }
+.confirm-title { font-weight: 600; color: #1f2933; margin-bottom: 8px; }
+.confirm-actions { display: flex; gap: 8px; margin-top: 12px; }
+.confirm-actions button { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
+.confirm-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 發布模式選擇器 */
+.publish-mode-section { border-top: 1px solid #e4e7eb; margin-top: 10px; padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.publish-mode-title { font-size: 0.8rem; color: #627d98; margin-bottom: 2px; }
+.mode-option { display: flex; align-items: baseline; gap: 7px; cursor: pointer; }
+.mode-option input[type=radio] { flex-shrink: 0; margin-top: 1px; accent-color: #2680c2; }
+.mode-label { font-size: 0.9rem; font-weight: 600; color: #1f2933; }
+.mode-desc { font-size: 0.8rem; color: #829ab1; }
+.mode-warning { margin: 4px 0 0; padding: 6px 10px; background: #fff8e6; border-radius: 6px; color: #8a6d3b; font-size: 0.8rem; line-height: 1.5; }
+
 </style>

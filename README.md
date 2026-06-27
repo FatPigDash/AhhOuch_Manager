@@ -53,7 +53,10 @@ GitHub Actions 會自動 build 並部署到 GitHub Pages，約 **2-3 分鐘**後
 需先安裝 [Node.js 18+](https://nodejs.org/)。
 
 ```powershell
+先設定路徑
 cd frontend\desktop
+
+執行指令
 npm install      # 首次安裝套件
 npm run dev      # 啟動開發伺服器（http://localhost:5173）
 ```

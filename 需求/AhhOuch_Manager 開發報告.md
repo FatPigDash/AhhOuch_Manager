@@ -8,7 +8,7 @@
 > - [`AhhOuch 開發計畫.md`](./AhhOuch%20開發計畫.md) — 開發前的總體規劃與需求對照表（修訂歷程已移至本報告 §12）
 > - 版本修訂紀錄（依版次）— 已整合於本報告 §5 附錄（原獨立檔 `CHANGELOG.md` 已移除）
 >
-> 報告產生日期：2026-06-20（最後更新：2026-06-25，§12 增列 11.38–11.39：**架構轉型 — FastAPI+exe → Local-First PWA（IndexedDB 資料層 + GitHub Pages 部署）**；前次為 11.37 美容師資訊編輯頁 UX 精修）
+> 報告產生日期：2026-06-20（最後更新：2026-06-26，§12 增列 11.46–11.50：**美容師卡片資訊連結欄位強化、批次發布、班表出勤排序/預設換算/名字超連結**；前次為 11.45 Telegram 自動發布還原）
 > ｜ 對應版本：app.toml 1.7.0／git V2.0.0→M2 完成 ｜ 狀態：**架構轉型進行中：M1（資料層移植）✅、M2（PWA 化 + GitHub Pages）✅、M3–M6 待開發**
 
 ---
@@ -289,6 +289,10 @@ git push origin main
 > - 11.36 → 架構拆分（移除客人系統、店家→幹部更名；影響全專案後端／前端／資料庫）
 > - 11.38 → M1 架構轉型（FastAPI → IndexedDB，Local-First）
 > - 11.39 → M2 PWA 化 + GitHub Pages 自動部署
+> - 11.46 / 11.47 → M4（美容師卡片資訊連結欄位：加「發布設定名稱」標籤、覆蓋模式、發布後連結回填）
+> - 11.48 → M4（批次發布美容師卡片，含選卡片、選圖片模式、選目標、優先覆蓋模式、連結回填）
+> - 11.49 → M4＋M6（發布時若原 Telegram 訊息被手動刪除，自動改發全新訊息）
+> - 11.50 → M5（班表：出勤人員排序改依資訊卡片順序、新增人員預設自動換算、發布時名字加 info_link 超連結）
 >
 > 讀法：先看 §5 里程碑的「↳」指引找到對應條目，即可掌握該功能的**最新實際行為**。
 
@@ -996,3 +1000,89 @@ git push origin main
 - **輔助**：`resizeTextarea` 量高前先記下 `window.scrollX/Y`、調整後立即 `window.scrollTo` 還原，作為正在編輯之文字框的雙重保險。
 
 **驗證**：Vite 轉換／編譯通過、主控台 0 錯誤；於瀏覽器預覽以原生 DOM 實測自動長高（`border-box`／`content-box` 皆 `hasScroll:false`，內容完整無捲軸）與捲動位置保留邏輯。完整實機操作（實際渲染卡片）需後端＋登入＋既有卡片資料，未一併拉起，但編譯與核心機制均已確認。
+
+---
+
+### 2026-06-26 — 美容師卡片發布強化、批次發布、班表改善
+
+#### 11.46 美容師卡片資訊連結：加入「發布設定名稱」欄位（`info_link_label`）
+
+**背景**：美容師卡片發布到 Telegram 後，`info_link` 欄位會回填訊息連結；但當卡片對應多個發布目標時，使用者無法辨識該連結對應哪個群組。
+
+**`db.js`**：IndexedDB `cards` object store 新增 `info_link_label` 欄位（字串）；`getCard` 與 `listCards` 一併回傳（`listCards` 同時補回 `info_link`，供後續批次發布判斷覆蓋或全新）。`updateCadreCard` 支援更新該欄位。
+
+**`CadreCardDetailView.vue`**：
+- 發布視窗新增「發布設定名稱」唯讀文字框（顯示 `info_link_label`），與「資訊訊息連結」欄位並列，讓使用者清楚知道連結對應哪個目標。
+- 新增 `onLinkInput` 方法處理連結清空時自動清除標籤（避免 Vue 模板行內 `if` 語法解析錯誤）。
+- 發布成功後同步將目標名稱存入 `info_link_label`（DB + 本地 reactive）。
+
+**驗證**：`npm run build` 成功。
+
+#### 11.47 美容師卡片發布：確認視窗選擇覆蓋或全新、優先覆蓋為預設
+
+**背景**：使用者希望能修改既有 Telegram 訊息（避免舊連結失效、保留已分享連結的點擊流量），而非每次都發全新訊息。
+
+**`telegram.js`**：新增 `editCard(token, chatId, messageId, files, text)` 函式，依圖片數量分別呼叫：
+- 0 張 → `editMessageText`（HTML parse_mode）
+- 1 張 → `editMessageMedia`（`InputMediaPhoto` 重新上傳）
+- 多張 → 先嘗試逐張 `editMessageMedia` 更新、若訊息為相簿群組則改 fallback 為純文字 `editMessageText`（Telegram 不允許修改多圖 media group 的媒體）
+
+**`CadreCardDetailView.vue` 的 `sendToTelegram`**：
+- 新增 `publishMode`（`ref('new')`），已有連結時預設為 `'edit'`（優先覆蓋）。
+- 確認視窗新增兩個 radio 選項：「✏ 覆蓋舊訊息」與「＋ 發布全新訊息」。
+- `publishMode === 'edit'` 時呼叫 `tgEditCard`，連結保持不變；`'new'` 時呼叫 `tgSendCard` 並將新連結＋標籤回填（`info_link` / `info_link_label`）。
+
+新增 `parseMsgId(link)` 與 `buildTgLink(chatId, messageId)` 輔助函式，從 `t.me` 連結解析 message_id 並反組連結。
+
+**驗證**：`npm run build` 成功。
+
+#### 11.48 批次發布美容師卡片
+
+**目標**：讓幹部從列表頁勾選多張卡片，一次發布到多個 Telegram 目標，並將連結自動回填至各卡片。
+
+**`CadreCardListView.vue`（全新重寫，含批次功能）**：
+
+*批次模式切換*：工具列右側加「☑ 批次發布」按鈕，啟動後工具列切換為「已選 N 張 ＋ 全選/取消全選」。格狀與列表兩種視圖皆出現藍框勾選框，已選卡片藍色邊框高亮。
+
+*浮動操作列*：固定於畫面底部，顯示已選張數、「📤 發布選取的卡片」與「✕ 退出」。
+
+*批次發布 Modal — 三階段*：
+- **設定**：介紹版本（完整／簡短）pill 選擇、圖片模式（僅封面圖／**所有圖片**（最多 10 張）／不附圖片）、目標多選 checkbox（預設全選）、訊息模式（**優先覆蓋** — 有既有連結且標籤相符者覆蓋、其餘全新；**全部全新** — 忽略既有連結）。設定完成後顯示摘要（X 覆蓋、Y 全新）。
+- **執行中**：進度列 ＋ 每張卡片狀態即時更新（等待 → 📡 發送中… → ✓ 已覆蓋/已發布/已發布（原訊息已刪除）／✗ 失敗）。
+- **完成**：成功/失敗計數摘要 ＋ 失敗詳細訊息 ＋ 關閉按鈕。
+
+*連結回填*：全新模式發布成功後，自動將 `info_link` 與 `info_link_label` 存回 IndexedDB，並同步更新列表頁 reactive 資料（影響下次 Modal 的覆蓋判斷）。
+
+**驗證**：`npm run build` 成功（54 模組）。
+
+#### 11.49 發布時若原 Telegram 訊息被手動刪除，自動改發全新訊息
+
+**背景**：使用者在 Telegram 手動刪除了已發布的訊息後，系統仍儲存舊連結；下次用「優先覆蓋」模式發布時會因訊息不存在而回傳 API 錯誤，應自動降級為全新發布。
+
+**`telegram.js`**：新增並匯出 `isMessageNotFoundError(e)` 輔助函式，偵測錯誤訊息中是否含 `"message to edit not found"`、`"message_id_invalid"` 或 `"message not found"`（不分大小寫）。
+
+**`CadreCardDetailView.vue`**（單張卡片發布）：
+- Import `isMessageNotFoundError`。
+- `sendToTelegram` 的 edit 分支以 `try/catch` 包住 `tgEditCard`；捕捉到「訊息不存在」時，顯示「原訊息不存在，自動改為發布新訊息…」，接著呼叫 `tgSendCard` 並將新連結回填（`info_link` / `info_link_label`）。
+
+**`CadreCardListView.vue`**（批次發布）：
+- Import `isMessageNotFoundError`。
+- `runBatch` 的 edit 路徑同樣以 `try/catch` 包住 `editCard`；捕捉到「訊息不存在」時，自動切換為 `sendCard`，結果標示「✓ 已發布（原訊息已刪除）」並回填連結。
+
+**驗證**：`npm run build` 成功。
+
+#### 11.50 班表改善：出勤排序依資訊卡片、預設自動換算、發布名字超連結
+
+**對應需求**：`待修改.md` 第三點「班表」的三個子項。
+
+**(1) 出勤時段預設改為「自動換算」**：`db.js` `addEntry` 新建出勤記錄時 `time_mode` 改預設 `'auto'`（原為 `'manual'`）；`getSchedule` 的 `enriched` 未設 `time_mode` 時回退也改為 `'auto'`。
+
+**(2) 出勤人員排序改依資訊卡片列表順序**：`db.js` `getSchedule` 原依 entry 的 `sort_order` 排列；改為從各 `cadreCard` 取 `sort_order ?? id` 後按資訊卡片順序排列（`enriched.sort` + `delete e._sort_order`）。`getSchedule` 同時將 `info_link` 納入 `enriched` 回傳，供發布文字使用。
+
+**(3) 發布時出勤人員名字加 info_link 超連結（HTML 格式）**：
+- `db.js` `schedulePublishText` 改為雙輸出：`text`（純文字，供複製/分享 LINE）與 `html`（Telegram HTML parse_mode 格式）。HTML 版若 entry 有 `info_link`，名字欄位以 `<a href="...">...</a>` 包裹。特殊字元（`&`、`<`、`>`）由 `escapeHtml` 處理。
+- `telegram.js` `sendText` 新增 `opts = {}` 參數，支援 `parse_mode`。
+- `api.js` `schedulePublishText` 改為直接回傳 DB 的 `{ text, html }` 物件（原本有額外 `.then` 包裝）。
+- `ScheduleEditView.vue` 新增 `publishHtml ref`；`openPublish` 時同時取回 `text` 與 `html`；Telegram 發布時以 `publishHtml`（若有）搭配 `{ parse_mode: 'HTML' }` 送出；複製/分享 LINE 依然使用純文字 `publishText`。
+
+**驗證**：`npm run build` 成功（54 模組，PWA 產出）。
