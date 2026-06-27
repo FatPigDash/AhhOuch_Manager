@@ -8,7 +8,7 @@
 > - [`AhhOuch 開發計畫.md`](./AhhOuch%20開發計畫.md) — 開發前的總體規劃與需求對照表（修訂歷程已移至本報告 §12）
 > - 版本修訂紀錄（依版次）— 已整合於本報告 §5 附錄（原獨立檔 `CHANGELOG.md` 已移除）
 >
-> 報告產生日期：2026-06-20（最後更新：2026-06-26，§12 增列 11.46–11.50：**美容師卡片資訊連結欄位強化、批次發布、班表出勤排序/預設換算/名字超連結**；前次為 11.45 Telegram 自動發布還原）
+> 報告產生日期：2026-06-20（最後更新：2026-06-27，§12 增列 11.51：**班表新增 Telegram 訊息連結與發布覆蓋模式**；前次為 11.46–11.50）
 > ｜ 對應版本：app.toml 1.7.0／git V2.0.0→M2 完成 ｜ 狀態：**架構轉型進行中：M1（資料層移植）✅、M2（PWA 化 + GitHub Pages）✅、M3–M6 待開發**
 
 ---
@@ -1086,3 +1086,41 @@ git push origin main
 - `ScheduleEditView.vue` 新增 `publishHtml ref`；`openPublish` 時同時取回 `text` 與 `html`；Telegram 發布時以 `publishHtml`（若有）搭配 `{ parse_mode: 'HTML' }` 送出；複製/分享 LINE 依然使用純文字 `publishText`。
 
 **驗證**：`npm run build` 成功（54 模組，PWA 產出）。
+
+#### 11.51 班表新增 Telegram 訊息連結與發布覆蓋模式
+
+**背景與需求**：將美容師資訊卡片的「資訊訊息連結回填」與「覆蓋/新發布」功能，同樣移植到班表功能中，以便於後續修改更新同一則班表訊息。
+
+**修改內容**：
+- **資料庫 (`db.js`)**：`schedules` Object Store 新增 `tg_link` 與 `tg_link_label` 欄位；在 `createSchedule`、`getSchedule` 及 `updateSchedule` 均支援與回傳這兩個欄位。
+- **發布 API (`telegram.js`)**：新增 `sendScheduleText`（發布純文字並回傳 `messageId`）與 `editScheduleText`（覆蓋現有文字訊息）。
+- **班表編輯視圖 (`ScheduleEditView.vue`)**：
+  - 結語下方新增「Telegram 訊息連結」與對應的標籤徽章顯示，支援發布後自動填入或手動編輯。
+  - 發布確認視窗的 Telegram 發送區塊加入「確認流程」，當班表已有連結時，可選擇「覆蓋舊有訊息（預設）」或「發布全新訊息」。
+  - 在執行發送時，會依選項自動呼叫 `editScheduleText` 或 `sendScheduleText`。若覆蓋時發生「原訊息已被刪除」錯誤，會運用 `isMessageNotFoundError` 捕捉並自動降級發布新訊息。
+
+**驗證**：功能正常，`npm run build` 成功。
+
+#### 11.52 備份到雲端：修正 iOS 分享失敗、按鈕改名、自動降級下載
+
+**問題**：iOS 手機點選「📤 分享備份檔」後顯示「分享失敗：permission denied」（即 `NotAllowedError`）。
+
+**根本原因**：Web Share API 要求 `navigator.share()` 必須在使用者手勢（點擊）的同步執行流程中直接呼叫。`doShare()` 函式先以 `await exportBackup()` 執行非同步打包作業，打包完成後才呼叫 `navigator.share()`——兩者之間存在 async gap，iOS Safari 的嚴格手勢時序檢查因此拒絕請求並回傳 `permission denied`。
+
+**修改 `views/BackupView.vue`**：
+
+- **`doShare()` 改寫為雙軌機制**：
+  1. 先嘗試原有的系統分享選單（`canShareFiles` + `share()`）；若成功則顯示提示「請選擇「儲存到檔案」(iOS) 或「存到 Google Drive」(Android)」後返回。
+  2. 若瀏覽器拒絕（`NotAllowedError` 或裝置不支援），**自動降級為下載**：以 `Blob` + `<a download>` 觸發存檔，iOS 存到「檔案」App（可選 iCloud Drive），Android 存到下載資料夾。
+  3. 使用者自行取消分享選單（`AbortError` → `'cancelled'`）時，不顯示任何錯誤訊息。
+
+- **按鈕名稱**：「📤 分享備份檔」→「📤 備份到雲端」，語意更貼近實際用途（備份目的，分享為手段）。
+
+- **提示文字**：「分享可直接存到雲端 App；下載存到本機後再自行上傳」→「點「📤 備份到雲端」自動儲存備份檔。iOS 會存到「檔案」App（可選 iCloud Drive）；Android 會存到下載資料夾。」
+
+**確認（背景知識）**：
+- iOS iCloud 備份（手機設定層級）**不可靠地保護**瀏覽器 IndexedDB 資料——Apple 明確將瀏覽器本地儲存列為「可清除快取」，換機或清除網站資料皆會遺失，在 App 內匯出備份檔存至 iCloud Drive 是唯一可靠的跨裝置還原途徑。
+- Android 可透過 Google Drive API 做自動直連上傳（需 OAuth 授權），但因使用者評估後認為手動備份已足夠，暫不實作。
+
+**驗證**：修改後 `doShare()` 在 iOS 遇到 `permission denied` 時自動降級下載，不再顯示錯誤訊息；成功訊息改為白話操作指引。`npm run build` 成功。
+

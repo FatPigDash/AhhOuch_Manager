@@ -38,6 +38,9 @@ git add .
 git commit -m "說明這次改了什麼"
 
 用這個指令其他人就會套用更新版本
+cd "d:\Fat Pig Project\AhhOuch_Manager_Edit"
+
+執行指令
 git push origin main
 ```
 
