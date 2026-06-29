@@ -8,7 +8,7 @@
 > - [`AhhOuch 開發計畫.md`](./AhhOuch%20開發計畫.md) — 開發前的總體規劃與需求對照表（修訂歷程已移至本報告 §12）
 > - 版本修訂紀錄（依版次）— 已整合於本報告 §5 附錄（原獨立檔 `CHANGELOG.md` 已移除）
 >
-> 報告產生日期：2026-06-20（最後更新：2026-06-27，§12 增列 11.54–11.56：**封面自動設定、教學頁回到主頁鈕、切換按鈕 tab 化**；前次為 11.53）
+> 報告產生日期：2026-06-20（最後更新：2026-06-29，§12 增列 11.57：**發布設定教學彈窗新增快速複製按鈕**；前次為 11.54–11.56）
 > ｜ 對應版本：app.toml 1.7.0／git V2.0.0→M2 完成 ｜ 狀態：**架構轉型進行中：M1（資料層移植）✅、M2（PWA 化 + GitHub Pages）✅、M3–M6 待開發**
 
 ---
@@ -299,6 +299,7 @@ git push origin main
 > - 11.54 → M4（美容師卡片：上傳第一張圖片時自動設為封面，後續以 ★ 按鈕手動切換）
 > - 11.55 → 軟體教學頁（GuideView 新增「回到主頁」按鈕，以 tab 橫列方式排於頁籤左側）
 > - 11.56 → M4（資訊卡片列表：卡片／列表切換按鈕外觀改為 tab 底線風格，與教學頁一致）
+> - 11.57 → M6（發布設定教學彈窗：指令與網址新增快速複製按鈕）
 >
 > 讀法：先看 §5 里程碑的「↳」指引找到對應條目，即可掌握該功能的**最新實際行為**。
 
@@ -1214,4 +1215,19 @@ git push origin main
 **視覺效果**：切換按鈕現在與教學頁頁籤（`#102a43` 底線、白底 active）外觀一致，統一全站 tab 設計語言。
 
 **檔案異動**：`frontend/desktop/src/views/CadreCardListView.vue` — `.view-toggle`、`.toolbar-right`、`.batch-toggle-btn` CSS 規則。
+
+### 2026-06-29 — 發布設定教學彈窗新增快速複製按鈕（M6 範圍精修）
+
+#### 11.57 發布設定教學彈窗：指令與網址新增快速複製按鈕（PublishSettingsView）
+
+**需求**：§11.19 新增的兩個教學彈窗中，指令（`/newbot`、`/revoke`）和網址（`https://api.telegram.org/bot金鑰/getUpdates`）需要使用者手動選取複製，不夠方便。
+
+**修改內容**（`frontend/desktop/src/views/PublishSettingsView.vue`）：
+
+- `<script setup>` 新增 `copied` ref 與 `copyText(text)` 函式：呼叫 `navigator.clipboard.writeText()` 複製到剪貼簿，成功後按鈕文字暫時變為「已複製」（1.5 秒後恢復）。
+- **機器人金鑰教學彈窗**：`/newbot` 指令與 `/revoke` 指令旁各加一顆「複製」按鈕。
+- **群組編號教學彈窗**：`https://api.telegram.org/bot金鑰/getUpdates` 網址旁加一顆「複製」按鈕，以 `.url-row`（flex 橫排）包裹網址與按鈕，避免按鈕換行。
+- 新增 CSS：`.copy-btn`（小型邊框按鈕、hover 高亮）、`.copy-btn.copied`（淺綠底表示已複製）、`.url-row`（flex 橫排容器）。
+
+**檔案異動**：`frontend/desktop/src/views/PublishSettingsView.vue` — `copyText` 函式、三處複製按鈕、`.copy-btn` / `.url-row` CSS 規則。
 

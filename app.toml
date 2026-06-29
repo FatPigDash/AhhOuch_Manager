@@ -3,7 +3,7 @@
 # 其他檔案一律從此取值，請勿在別處硬編碼名稱或版次。
 
 app_name = "AhhOuch_Manager"
-version  = "2.8.0"
+version  = "2.9.0"
 
 # 伺服器預設綁定位址與埠（初期單機單人；日後開放區網改 host = "0.0.0.0"）
 [server]

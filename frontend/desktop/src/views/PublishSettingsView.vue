@@ -42,6 +42,15 @@ async function removeTarget(t) {
   try { await api.deleteTarget(t.id); await load() } catch (e) { error.value = e.message }
 }
 
+const copied = ref('')
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    copied.value = text
+    setTimeout(() => { if (copied.value === text) copied.value = '' }, 1500)
+  } catch { /* fallback: do nothing */ }
+}
+
 onMounted(load)
 </script>
 
@@ -124,12 +133,12 @@ onMounted(load)
         </header>
         <ol class="steps">
           <li>在 Telegram 搜尋並開啟官方的 <b>@BotFather</b>（有藍色認證勾勾）。</li>
-          <li>對它輸入指令 <code>/newbot</code>，按它的指示操作。</li>
+          <li>對它輸入指令 <code>/newbot</code><button type="button" class="copy-btn" :class="{ copied: copied === '/newbot' }" @click="copyText('/newbot')">{{ copied === '/newbot' ? '已複製' : '複製' }}</button>，按它的指示操作。</li>
           <li>先取一個<b>機器人名稱</b>（顯示用，可中文）。</li>
           <li>再取一個<b>使用者名稱</b>，<b>必須以 <code>bot</code> 結尾</b>（例如 <code>myshop_bot</code>），且不能重複。</li>
           <li>完成後 BotFather 會回一段訊息，裡面的 <b>HTTP API token</b> 就是金鑰，格式像 <code>123456789:AAE…</code>，把它整串複製貼回上面欄位。</li>
         </ol>
-        <p class="note">小提醒：金鑰等於機器人的密碼，請勿外流。若不慎外洩，可在 BotFather 用 <code>/revoke</code> 重新產生一組新金鑰。</p>
+        <p class="note">小提醒：金鑰等於機器人的密碼，請勿外流。若不慎外洩，可在 BotFather 用 <code>/revoke</code><button type="button" class="copy-btn" :class="{ copied: copied === '/revoke' }" @click="copyText('/revoke')">{{ copied === '/revoke' ? '已複製' : '複製' }}</button> 重新產生一組新金鑰。</p>
       </div>
     </div>
 
@@ -145,7 +154,10 @@ onMounted(load)
           <li>把這個機器人<b>加入你要發送的群組</b>。</li>
           <li>在群組裡<b>隨便發一則訊息</b>（讓機器人收得到）。</li>
           <li>用瀏覽器打開這個網址（把 <code>金鑰</code> 換成你的機器人金鑰）：
-            <code class="url">https://api.telegram.org/bot金鑰/getUpdates</code>
+            <span class="url-row">
+              <code class="url">https://api.telegram.org/bot金鑰/getUpdates</code>
+              <button type="button" class="copy-btn" :class="{ copied: copied === 'https://api.telegram.org/bot金鑰/getUpdates' }" @click="copyText('https://api.telegram.org/bot金鑰/getUpdates')">{{ copied === 'https://api.telegram.org/bot金鑰/getUpdates' ? '已複製' : '複製' }}</button>
+            </span>
           </li>
           <li>在跳出的內容裡找到 <code>"chat":{"id":-100…}</code>，那個 <b>id</b> 就是群組編號，貼回上面欄位即可。</li>
         </ol>
@@ -193,6 +205,12 @@ h2 { margin: 0 0 12px; font-size: 1.05rem; }
 .steps li { margin-bottom: 8px; }
 .steps code { background: #f0f4f8; border-radius: 4px; padding: 1px 5px; font-size: 0.85rem; color: #0a558c; }
 .steps code.url { display: block; margin-top: 4px; word-break: break-all; }
+.copy-btn { display: inline-flex; align-items: center; margin-left: 6px; padding: 1px 8px; border: 1px solid #cbd2d9; border-radius: 6px; background: #f0f4f8; color: #486581; font-size: 0.75rem; cursor: pointer; white-space: nowrap; vertical-align: middle; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.copy-btn:hover { background: #d9e2ec; border-color: #9fb3c8; }
+.copy-btn.copied { background: #def7ec; color: #03543f; border-color: #8bc5a7; }
+.url-row { display: flex; align-items: flex-start; gap: 6px; margin-top: 4px; }
+.url-row .url { margin-top: 0; flex: 1; }
+.url-row .copy-btn { flex: none; margin-left: 0; margin-top: 2px; }
 .note { margin: 12px 0 0; padding: 10px 12px; background: #fff8e6; border-radius: 8px; color: #8a6d3b; font-size: 0.85rem; line-height: 1.6; }
 
 @media (max-width: 640px) {
