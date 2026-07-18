@@ -3,10 +3,10 @@
 養身館**幹部**用的資訊管理 PWA：建立美容師資訊卡片、編排班表，並分享到群組。
 
 - 架構：Vue 3 + Vite + IndexedDB（Local-First，無後端伺服器）
-- 托管：GitHub Pages（免費靜態托管，HTTPS）
+- 托管：Cloudflare Pages（免費靜態托管，HTTPS）
 - 安裝：手機瀏覽器開啟網址 → 「加入主畫面」即可當 App 使用
 
-**使用網址：** https://FatPigDash.github.io/AhhOuch_Manager/
+**使用網址：** https://ahhouch-manager.pages.dev/
 
 ---
 
@@ -44,10 +44,10 @@ github上傳就能讓其他人就會套用更新版本
 git push origin main
 ```
 
-GitHub Actions 會自動 build 並部署到 GitHub Pages，約 **2-3 分鐘**後生效。  
+Cloudflare Pages 會自動 build 並部署，約 **1-2 分鐘**後生效。  
 幹部重新整理頁面就會看到最新版本，不需要任何額外操作。
 
-部署狀態可在此查看：https://github.com/FatPigDash/AhhOuch_Manager/actions
+部署狀態可在 Cloudflare Dashboard 的 Workers & Pages 專案頁面查看。
 
 ---
 
@@ -84,8 +84,6 @@ version  = "2.1.0"
 ```
 AhhOuch_Manager_Edit/
 ├─ app.toml                  軟體名稱與版次
-├─ .github/workflows/
-│  └─ deploy.yml             GitHub Actions 自動部署設定
 └─ frontend/
    └─ desktop/               PWA 主體（Vue 3 + Vite）
       ├─ src/
