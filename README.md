@@ -37,7 +37,7 @@
 git add .
 git commit -m "說明這次改了什麼"
 
-github上傳就能讓其他人就會套用更新版本
+github push後就能讓其他人自動更新版本
 
 
 執行備份指令
